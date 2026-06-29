@@ -1,0 +1,166 @@
+name: Build Fast Time Server
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/workflows/build-fast-time-server.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/workflows/build-fast-time-server.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+  SERVER_NAME: fast-time-server
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set image name lowercase
+        run: |
+          IMAGE_PREFIX_LC=$(echo "${{ env.IMAGE_PREFIX }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX_LC=${IMAGE_PREFIX_LC}" >> "${GITHUB_ENV}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/mcp-${{ env.SERVER_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.suffix }}-${{ github.sha }}
+
+      - name: Build and push container image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers/rust/${{ env.SERVER_NAME }}
+          file: ./mcp-servers/rust/${{ env.SERVER_NAME }}/Containerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ env.SERVER_NAME }}-${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ env.SERVER_NAME }}-${{ matrix.suffix }}
+          provenance: false
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+          echo "Digest for ${{ env.SERVER_NAME }}-${{ matrix.suffix }}: $digest"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ env.SERVER_NAME }}-${{ matrix.suffix }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Create Manifest
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Set image name lowercase
+        run: |
+          IMAGE_PREFIX_LC=$(echo "${{ env.IMAGE_PREFIX }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX_LC=${IMAGE_PREFIX_LC}" >> "${GITHUB_ENV}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          SHA=${{ github.sha }}
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/mcp-${{ env.SERVER_NAME }}
+          
+          echo "Creating multiplatform manifest for ${{ env.SERVER_NAME }}..."
+          
+          IMAGES=(
+            "${IMAGE}:amd64-${SHA}"
+            "${IMAGE}:arm64-${SHA}"
+          )
+          
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            docker buildx imagetools create \
+              --tag "${IMAGE}:${SHA}" \
+              --tag "${IMAGE}:${GITHUB_REF_NAME}" \
+              --tag "${IMAGE}:latest" \
+              "${IMAGES[@]}"
+          elif [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            docker buildx imagetools create \
+              --tag "${IMAGE}:${SHA}" \
+              --tag "${IMAGE}:latest" \
+              "${IMAGES[@]}"
+          else
+            docker buildx imagetools create \
+              --tag "${IMAGE}:${SHA}" \
+              "${IMAGES[@]}"
+          fi
+          
+          echo "Manifest created successfully"
+
+      - name: Inspect manifest
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/mcp-${{ env.SERVER_NAME }}
+          echo "Inspecting multiplatform manifest..."
+          docker buildx imagetools inspect "${IMAGE}:${{ github.sha }}"
