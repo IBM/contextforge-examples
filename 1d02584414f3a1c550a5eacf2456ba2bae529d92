@@ -4,3 +4,15 @@
 {"id":"c4bd6099-dc11-46cc-856c-ab919b251937","ts":"2026-06-29T13:35:32.905Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-fast-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
 {"id":"581d8f82-e055-4975-becb-312c71dab8ae","ts":"2026-06-29T13:35:38.554Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-filesystem-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
 {"id":"f46c949e-af58-4355-871d-4f03fe9d0e47","ts":"2026-06-29T13:35:43.957Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-slow-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+
+{"id":"247cd904-15be-42e7-8468-c66ac672da28","ts":"2026-06-29T12:25:45.115Z","path":"/Users/jonpspri/Projects/cf/examples/mcp-servers/rust/filesystem-server/Containerfile","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"e875a1ad-d2e9-4c78-af0e-010439f3eb67","ts":"2026-06-29T12:25:55.543Z","path":"/Users/jonpspri/Projects/cf/examples/mcp-servers/rust/filesystem-server/Containerfile","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+
+{"id":"eb1a0827-4abd-4d2f-9133-36b2e39576e3","ts":"2026-06-29T12:20:42.996Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-a2a-echo-agent.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+
+{"id":"6ed000ed-05a5-49c0-8a55-117c8fa8b7b5","ts":"2026-06-29T12:15:51.043Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-benchmark-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"6ddb2ab5-491d-475f-b5dc-53601afc2b87","ts":"2026-06-29T12:16:07.174Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-fast-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"a978b3a9-8119-4e16-8baa-52a9bbc90962","ts":"2026-06-29T12:16:23.799Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-filesystem-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"777d1e92-f987-4150-8165-13b8b9474de3","ts":"2026-06-29T12:16:38.906Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-slow-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+
+{"id":"7ba857eb-e5a1-450a-8945-e017d81af1d6","ts":"2026-06-29T12:13:19.487Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-rust-mcp-servers.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
