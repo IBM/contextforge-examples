@@ -1,0 +1,5 @@
+{"id":"769fc8cf-bb37-4225-842c-42bbf9b5240d","ts":"2026-06-29T13:40:55.690Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-a2a-echo-agent.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"f41e8c2d-6317-4628-9ad6-e79f633e3cd5","ts":"2026-06-29T13:41:07.544Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-benchmark-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"aea0e507-e65b-4d72-b891-699c576c0240","ts":"2026-06-29T13:41:20.381Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-fast-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"150c32f4-640d-468b-9631-6ca16f2df319","ts":"2026-06-29T13:41:32.072Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-filesystem-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
+{"id":"624f6aa3-9a39-4f44-be18-71efaf8d4b3f","ts":"2026-06-29T13:41:44.184Z","path":"/Users/jonpspri/Projects/cf/examples/.github/workflows/build-slow-time-server.yml","version":"1.0.0","taskID":"a17fc2a3-9bf1-4b9c-ba93-140783102a32"}
