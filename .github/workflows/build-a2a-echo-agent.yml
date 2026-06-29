@@ -69,7 +69,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/${{ env.AGENT_NAME }}
+          images: ${{ env.REGISTRY }}/ibm/cfex-${{ env.AGENT_NAME }}
           tags: |
             type=raw,value=${{ matrix.suffix }}-${{ github.sha }}
 
@@ -131,7 +131,7 @@ jobs:
       - name: Create and push manifest
         run: |
           SHA=${{ github.sha }}
-          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/${{ env.AGENT_NAME }}
+          IMAGE=${{ env.REGISTRY }}/ibm/cfex-${{ env.AGENT_NAME }}
           
           echo "Creating multiplatform manifest for ${{ env.AGENT_NAME }}..."
           
@@ -161,6 +161,6 @@ jobs:
 
       - name: Inspect manifest
         run: |
-          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX_LC }}/${{ env.AGENT_NAME }}
+          IMAGE=${{ env.REGISTRY }}/ibm/cfex-${{ env.AGENT_NAME }}
           echo "Inspecting multiplatform manifest..."
           docker buildx imagetools inspect "${IMAGE}:${{ github.sha }}"
