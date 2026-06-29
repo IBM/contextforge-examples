@@ -1,0 +1,72 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# filesystem-server - Minimal Rust static binary Docker image
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ==========================
+# Build stage: static Rust binary
+# ==========================
+FROM rust:1.92-slim AS builder
+
+# Accept build arguments for multi-arch support
+ARG TARGETARCH
+
+WORKDIR /app
+
+# Install musl and pkg-config for static builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    musl-tools \
+    pkg-config \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Map Docker TARGETARCH to Rust target triple and add target
+RUN case "${TARGETARCH}" in \
+    amd64)   RUST_TARGET="x86_64-unknown-linux-musl" ;; \
+    arm64)   RUST_TARGET="aarch64-unknown-linux-musl" ;; \
+    s390x)   RUST_TARGET="s390x-unknown-linux-musl" ;; \
+    ppc64le) RUST_TARGET="powerpc64le-unknown-linux-musl" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    echo "${RUST_TARGET}" > /rust-target.txt && \
+    rustup target add ${RUST_TARGET}
+
+# Copy manifests first for caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create minimal dummy main to cache dependencies
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release --target ${RUST_TARGET} && \
+    rm -rf src target/${RUST_TARGET}/release/deps/* \
+           target/${RUST_TARGET}/release/.fingerprint/*
+
+# Copy real source code
+COPY src ./src
+
+# Build final static binary and strip
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    cargo build --release --target ${RUST_TARGET} && \
+    strip target/${RUST_TARGET}/release/filesystem-server && \
+    cp target/${RUST_TARGET}/release/filesystem-server /filesystem-server
+
+# ==========================
+# Runtime stage: minimal scratch image
+# ==========================
+FROM scratch
+
+WORKDIR /app
+
+# Copy static binary from builder
+COPY --from=builder /filesystem-server /filesystem-server
+
+# Copy CA certs for TLS if needed
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Expose port
+EXPOSE 8084
+
+# Environment
+ENV RUST_LOG=info
+
+# Entrypoint
+ENTRYPOINT ["/filesystem-server"]
