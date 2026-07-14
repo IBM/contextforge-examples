@@ -1,0 +1,83 @@
+name: Fast Time Server Conformance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/conformance/fast-time-server-xfail.yml'
+      - '.github/workflows/conformance-fast-time-server.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/conformance/fast-time-server-xfail.yml'
+      - '.github/workflows/conformance-fast-time-server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: MCP server conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build server
+        working-directory: mcp-servers/rust/fast-time-server
+        run: cargo build --locked
+
+      - name: Start server
+        working-directory: mcp-servers/rust/fast-time-server
+        run: |
+          BIND_ADDRESS=127.0.0.1:9080 ./target/debug/fast-time-server \
+            >"${RUNNER_TEMP}/fast-time-server.log" 2>&1 &
+          server_pid=$!
+          echo "SERVER_PID=${server_pid}" >> "${GITHUB_ENV}"
+
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:9080/health >/dev/null 2>&1; then
+              exit 0
+            fi
+            if ! kill -0 "${server_pid}" 2>/dev/null; then
+              cat "${RUNNER_TEMP}/fast-time-server.log"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          cat "${RUNNER_TEMP}/fast-time-server.log"
+          exit 1
+
+      - name: Run MCP conformance suite
+        # The upstream composite action is not on IBM's GitHub Actions allowlist.
+        run: |
+          npx --yes @modelcontextprotocol/conformance@0.1.16 server \
+            --url http://127.0.0.1:9080/mcp \
+            --suite active \
+            --spec-version 2025-11-25 \
+            --expected-failures ./.github/conformance/fast-time-server-xfail.yml \
+            --verbose
+
+      - name: Show server logs
+        if: failure()
+        run: |
+          if [[ -f "${RUNNER_TEMP}/fast-time-server.log" ]]; then
+            cat "${RUNNER_TEMP}/fast-time-server.log"
+          fi
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [[ -n "${SERVER_PID:-}" ]]; then
+            kill "${SERVER_PID}" 2>/dev/null || true
+          fi
