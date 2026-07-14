@@ -30,9 +30,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Build server
         working-directory: mcp-servers/rust/fast-time-server
         run: cargo build --locked
@@ -60,13 +57,13 @@ jobs:
           exit 1
 
       - name: Run MCP conformance suite
-        uses: modelcontextprotocol/conformance@v0.1.16
-        with:
-          mode: server
-          url: http://127.0.0.1:9080/mcp
-          suite: active
-          expected-failures: ./mcp-servers/rust/fast-time-server/conformance-baseline.yml
-          verbose: true
+        # The upstream composite action is not on IBM's GitHub Actions allowlist.
+        run: |
+          npx --yes @modelcontextprotocol/conformance@0.1.16 server \
+            --url http://127.0.0.1:9080/mcp \
+            --suite active \
+            --expected-failures ./mcp-servers/rust/fast-time-server/conformance-baseline.yml \
+            --verbose
 
       - name: Show server logs
         if: failure()
