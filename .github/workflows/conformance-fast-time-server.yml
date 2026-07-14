@@ -6,12 +6,14 @@ on:
       - main
     paths:
       - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/conformance/fast-time-server-xfail.yml'
       - '.github/workflows/conformance-fast-time-server.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'mcp-servers/rust/fast-time-server/**'
+      - '.github/conformance/fast-time-server-xfail.yml'
       - '.github/workflows/conformance-fast-time-server.yml'
   workflow_dispatch:
 
@@ -62,6 +64,8 @@ jobs:
           npx --yes @modelcontextprotocol/conformance@0.1.16 server \
             --url http://127.0.0.1:9080/mcp \
             --suite active \
+            --spec-version 2025-11-25 \
+            --expected-failures ./.github/conformance/fast-time-server-xfail.yml \
             --verbose
 
       - name: Show server logs
