@@ -195,19 +195,33 @@ fn parse_offset(s: &str) -> Result<FixedOffset, String> {
 // Server Configuration & CLI
 // ============================================================================
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ServerConfig {
     modern: bool,
+    legacy: bool,
     strict: bool,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            modern: false,
+            legacy: true,
+            strict: false,
+        }
+    }
 }
 
 impl ServerConfig {
     fn supported_versions(&self) -> Vec<&'static str> {
+        let mut versions = Vec::new();
         if self.modern {
-            vec![MCP_PROTOCOL_VERSION_MODERN, MCP_PROTOCOL_VERSION]
-        } else {
-            vec![MCP_PROTOCOL_VERSION]
+            versions.push(MCP_PROTOCOL_VERSION_MODERN);
         }
+        if self.legacy {
+            versions.push(MCP_PROTOCOL_VERSION);
+        }
+        versions
     }
 }
 
@@ -219,25 +233,29 @@ fn usage() -> String {
          \x20 --protocol <VERSION>  Also serve the given MCP protocol revision.\n\
          \x20                        Supported: {MCP_PROTOCOL_VERSION}, {MCP_PROTOCOL_VERSION_MODERN}.\n\
          \x20                        May be repeated. Default: {MCP_PROTOCOL_VERSION} only.\n\
-         \x20 --strict             Reject `initialize` requests for unsupported protocol\n\
-         \x20                        versions instead of negotiating a fallback to\n\
-         \x20                        {MCP_PROTOCOL_VERSION}."
+         \x20 --strict             Serve exactly the revisions named with --protocol\n\
+         \x20                        (default {MCP_PROTOCOL_VERSION}) and reject any\n\
+         \x20                        non-conformant interaction — no fallback, no\n\
+         \x20                        `initialize` handshake unless {MCP_PROTOCOL_VERSION}\n\
+         \x20                        was explicitly enabled."
     )
 }
 
 fn parse_args(args: &[String]) -> Result<ServerConfig, String> {
-    let mut config = ServerConfig::default();
+    let mut modern = false;
+    let mut legacy_explicit = false;
+    let mut strict = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--strict" => config.strict = true,
+            "--strict" => strict = true,
             "--protocol" => {
                 let version = args
                     .next()
                     .ok_or_else(|| "--protocol requires a version argument".to_string())?;
                 match version.as_str() {
-                    MCP_PROTOCOL_VERSION => {}
-                    MCP_PROTOCOL_VERSION_MODERN => config.modern = true,
+                    MCP_PROTOCOL_VERSION => legacy_explicit = true,
+                    MCP_PROTOCOL_VERSION_MODERN => modern = true,
                     other => {
                         return Err(format!(
                             "unsupported protocol version '{other}' \
@@ -249,7 +267,14 @@ fn parse_args(args: &[String]) -> Result<ServerConfig, String> {
             other => return Err(format!("unknown argument '{other}'")),
         }
     }
-    Ok(config)
+    // Non-strict servers always keep the legacy revision available so older
+    // clients can fall back to it; strict servers serve exactly the revisions
+    // named with --protocol and reject everything else.
+    Ok(ServerConfig {
+        modern,
+        legacy: if strict { legacy_explicit } else { true },
+        strict,
+    })
 }
 
 // ============================================================================
@@ -525,7 +550,7 @@ fn mcp_initialize_response(
         .get("params")
         .and_then(|params| params.get("protocolVersion"))
         .and_then(serde_json::Value::as_str);
-    if config.strict && requested != Some(MCP_PROTOCOL_VERSION) {
+    if config.strict && (!config.legacy || requested != Some(MCP_PROTOCOL_VERSION)) {
         return mcp_error_response(
             id,
             -32602,
@@ -1459,6 +1484,38 @@ mod tests {
         let config = parse_args(&args).unwrap();
         assert!(config.modern);
         assert!(config.strict);
+        // Strict serves exactly the revisions named with --protocol.
+        assert!(!config.legacy);
+        assert_eq!(config.supported_versions(), vec!["2026-07-28"]);
+    }
+
+    #[test]
+    fn test_parse_args_strict_with_explicit_versions_serves_both() {
+        let args: Vec<String> = [
+            "--protocol",
+            "2026-07-28",
+            "--protocol",
+            "2025-11-25",
+            "--strict",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        let config = parse_args(&args).unwrap();
+        assert_eq!(
+            config.supported_versions(),
+            vec!["2026-07-28", "2025-11-25"]
+        );
+    }
+
+    #[test]
+    fn test_parse_args_non_strict_keeps_legacy_fallback() {
+        let args: Vec<String> = ["--protocol", "2026-07-28"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let config = parse_args(&args).unwrap();
+        assert!(config.legacy);
         assert_eq!(
             config.supported_versions(),
             vec!["2026-07-28", "2025-11-25"]
@@ -1481,6 +1538,7 @@ mod tests {
     fn modern_state() -> axum::extract::State<Arc<ServerConfig>> {
         axum::extract::State(Arc::new(ServerConfig {
             modern: true,
+            legacy: true,
             strict: false,
         }))
     }
@@ -1488,6 +1546,15 @@ mod tests {
     fn strict_state() -> axum::extract::State<Arc<ServerConfig>> {
         axum::extract::State(Arc::new(ServerConfig {
             modern: true,
+            legacy: true,
+            strict: true,
+        }))
+    }
+
+    fn strict_modern_only_state() -> axum::extract::State<Arc<ServerConfig>> {
+        axum::extract::State(Arc::new(ServerConfig {
+            modern: true,
+            legacy: false,
             strict: true,
         }))
     }
@@ -1658,6 +1725,29 @@ mod tests {
         assert!(response.headers().contains_key(SESSION_HEADER));
         let body = response_text(response).await;
         assert!(body.contains(r#""protocolVersion":"2025-11-25""#));
+    }
+
+    #[tokio::test]
+    async fn test_strict_modern_only_rejects_all_initialize() {
+        for version in ["2025-11-25", "2024-11-05"] {
+            let response = mcp_handler(
+                strict_modern_only_state(),
+                HeaderMap::new(),
+                axum::Json(initialize_request(version)),
+            )
+            .await;
+
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(response.headers().get(SESSION_HEADER).is_none());
+            let body = response_json(response).await;
+            assert_eq!(body["error"]["code"], -32602);
+            assert_eq!(body["error"]["message"], "Unsupported protocol version");
+            assert_eq!(
+                body["error"]["data"]["supported"],
+                json!(["2026-07-28"]),
+                "initialize for {version} must be rejected naming only the strict set"
+            );
+        }
     }
 
     #[tokio::test]
