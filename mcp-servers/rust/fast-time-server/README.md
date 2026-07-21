@@ -220,7 +220,7 @@ make docker-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--protocol <VERSION>` | `2025-11-25` only | Also serve the given MCP protocol revision. Supported: `2025-11-25`, `2026-07-28`. May be repeated. |
-| `--strict` | off | Reject `initialize` requests for unsupported protocol versions instead of negotiating a fallback to `2025-11-25`. |
+| `--strict` | off | Serve exactly the revisions named with `--protocol` and reject any non-conformant interaction — no fallback, and no `initialize` handshake at all unless `2025-11-25` was explicitly enabled. |
 
 Without arguments the server speaks only the legacy `2025-11-25` revision
 (`initialize` handshake + sessions). With `--protocol 2026-07-28` it becomes
@@ -230,8 +230,15 @@ statelessly per the modern revision, including the mandatory `server/discover`
 method. Unsupported modern versions are rejected with HTTP 400 and an
 `UnsupportedProtocolVersionError` (`-32022`) listing the supported versions;
 a mismatching `MCP-Protocol-Version` header is rejected with `HeaderMismatch`
-(`-32020`). With `--strict`, a legacy `initialize` naming an unsupported
-version fails with JSON-RPC error `-32602` instead of falling back.
+(`-32020`).
+
+`--strict` makes the served set exact. `--protocol 2026-07-28 --strict` runs a
+pure `2026-07-28` server: every `initialize` call — including ones naming
+`2025-11-25` — is rejected with JSON-RPC error `-32602` whose `data.supported`
+lists only the configured revisions, and `server/discover` advertises only
+`2026-07-28`. To run a strict server that still accepts the legacy handshake,
+enable both revisions explicitly:
+`--protocol 2025-11-25 --protocol 2026-07-28 --strict`.
 
 ## Environment Variables
 
