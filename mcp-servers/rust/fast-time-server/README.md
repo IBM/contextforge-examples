@@ -2,26 +2,36 @@
 
 > Author: Mihai Criveti
 
-Ultra-fast MCP server written in Rust for performance testing and benchmarking. Uses the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).
+Ultra-fast MCP server written in Rust for performance testing and benchmarking. Hand-rolled on axum with no SDK in the hot path.
 
 ## Features
 
 - **Blazing fast**: Native Rust performance with zero-copy where possible
 - **Streamable HTTP**: Modern HTTP transport with streaming support
+- **Dual-era MCP**: Serves legacy `2025-11-25` (initialize handshake + sessions) by default, and optionally the modern `2026-07-28` revision (stateless, per-request `_meta`) via `--protocol` — see [Command-Line Flags](#command-line-flags)
 - **Minimal overhead**: No auth, no database, pure compute
-- **Three tools**:
-  - `echo` - Echoes back the provided message
+- **Tools**:
+  - `echo` - Echoes back the provided message (with optional delay/jitter)
+  - `flaky` - Fails N times per key before succeeding (retry testing)
   - `get_system_time` - Returns current time in specified timezone
+  - `convert_time` - Converts a time between IANA timezones
+  - `schema_error` / `schema_success` - Output-schema validation fixtures
   - `get_stats` - Returns server statistics
 
 ## Quick Start
 
 ```bash
-# Build and run
+# Build and run (legacy 2025-11-25 only)
 make run
 
 # Or release build for benchmarking
 make run-release
+
+# Also serve the modern 2026-07-28 revision
+cargo run -- --protocol 2026-07-28
+
+# Reject version fallback during initialize (strict negotiation)
+cargo run -- --protocol 2026-07-28 --strict
 ```
 
 Server starts at `http://localhost:9080/mcp`
@@ -65,6 +75,31 @@ curl -X POST http://localhost:9080/mcp \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_system_time","arguments":{"timezone":"America/New_York"}},"id":1}'
 ```
+
+### Modern Protocol (2026-07-28)
+
+Start the server with `--protocol 2026-07-28` and skip the handshake entirely —
+modern requests are stateless and carry their protocol version in
+`params._meta` (plus the `MCP-Protocol-Version` header):
+
+```bash
+# Discover supported versions and capabilities (no session needed)
+curl -X POST http://localhost:9080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -d '{"jsonrpc":"2.0","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":1}'
+
+# Call a tool directly - no initialize, no session
+curl -X POST http://localhost:9080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"echo","arguments":{"message":"Hello!"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":2}'
+```
+
+A request for an unsupported version is rejected with HTTP 400 and an
+`UnsupportedProtocolVersionError` (`-32022`) whose `data.supported` lists the
+versions the server speaks.
+
 
 ### SSE Streaming Transport
 
@@ -170,14 +205,33 @@ make docker-run
 | `/api/echo` | POST | Echo `{"message":"..."}` - pure performance test |
 | `/api/time` | GET | Get time, optional `?tz=America/New_York` |
 | `/health` | GET | Health check |
-| `/version` | GET | Version info |
+| `/version` | GET | Version info, supported MCP protocol versions, strict mode |
 
 ### MCP Protocol
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/mcp` | POST | MCP JSON-RPC (requires session management) |
+| `/mcp` | POST | MCP JSON-RPC. Legacy (`2025-11-25`): `initialize` handshake + `mcp-session-id` sessions. Modern (`2026-07-28`, if enabled): stateless requests with version in `params._meta`, including `server/discover` |
+| `/mcp` | DELETE | Terminate a legacy session |
 | `/sse` | GET | Server-Sent Events streaming transport |
+
+## Command-Line Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--protocol <VERSION>` | `2025-11-25` only | Also serve the given MCP protocol revision. Supported: `2025-11-25`, `2026-07-28`. May be repeated. |
+| `--strict` | off | Reject `initialize` requests for unsupported protocol versions instead of negotiating a fallback to `2025-11-25`. |
+
+Without arguments the server speaks only the legacy `2025-11-25` revision
+(`initialize` handshake + sessions). With `--protocol 2026-07-28` it becomes
+dual-era: legacy `initialize` traffic is served as before, and requests that
+carry `io.modelcontextprotocol/protocolVersion` in `params._meta` are served
+statelessly per the modern revision, including the mandatory `server/discover`
+method. Unsupported modern versions are rejected with HTTP 400 and an
+`UnsupportedProtocolVersionError` (`-32022`) listing the supported versions;
+a mismatching `MCP-Protocol-Version` header is rejected with `HeaderMismatch`
+(`-32020`). With `--strict`, a legacy `initialize` naming an unsupported
+version fails with JSON-RPC error `-32602` instead of falling back.
 
 ## Environment Variables
 

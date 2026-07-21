@@ -24,7 +24,7 @@ use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{LazyLock, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use tracing::info;
 use tracing::trace;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -33,8 +33,18 @@ use uuid::Uuid;
 const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:9080";
 const APP_NAME: &str = "fast-time-server";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+// Legacy revisions (2025-11-25 and earlier) negotiate via the `initialize`
+// handshake; modern revisions (2026-07-28 and later) declare the version
+// per-request in `_meta`. The legacy revision is always served; the modern
+// revision is enabled with `--protocol`.
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+const MCP_PROTOCOL_VERSION_MODERN: &str = "2026-07-28";
 const SESSION_HEADER: &str = "mcp-session-id";
+const PROTOCOL_VERSION_HEADER: &str = "mcp-protocol-version";
+const PROTOCOL_VERSION_META_KEY: &str = "io.modelcontextprotocol/protocolVersion";
+const SERVER_INFO_META_KEY: &str = "io.modelcontextprotocol/serverInfo";
+const ERR_UNSUPPORTED_PROTOCOL_VERSION: i32 = -32022;
+const ERR_HEADER_MISMATCH: i32 = -32020;
 const MAX_ACTIVE_SESSIONS: usize = 10_000;
 const MAX_DELAY_MS: u64 = 60_000;
 static DIRECT_REQUEST_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -182,6 +192,67 @@ fn parse_offset(s: &str) -> Result<FixedOffset, String> {
 }
 
 // ============================================================================
+// Server Configuration & CLI
+// ============================================================================
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ServerConfig {
+    modern: bool,
+    strict: bool,
+}
+
+impl ServerConfig {
+    fn supported_versions(&self) -> Vec<&'static str> {
+        if self.modern {
+            vec![MCP_PROTOCOL_VERSION_MODERN, MCP_PROTOCOL_VERSION]
+        } else {
+            vec![MCP_PROTOCOL_VERSION]
+        }
+    }
+}
+
+fn usage() -> String {
+    format!(
+        "Usage: {APP_NAME} [--protocol <VERSION>]... [--strict]\n\
+         \n\
+         Options:\n\
+         \x20 --protocol <VERSION>  Also serve the given MCP protocol revision.\n\
+         \x20                        Supported: {MCP_PROTOCOL_VERSION}, {MCP_PROTOCOL_VERSION_MODERN}.\n\
+         \x20                        May be repeated. Default: {MCP_PROTOCOL_VERSION} only.\n\
+         \x20 --strict             Reject `initialize` requests for unsupported protocol\n\
+         \x20                        versions instead of negotiating a fallback to\n\
+         \x20                        {MCP_PROTOCOL_VERSION}."
+    )
+}
+
+fn parse_args(args: &[String]) -> Result<ServerConfig, String> {
+    let mut config = ServerConfig::default();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--strict" => config.strict = true,
+            "--protocol" => {
+                let version = args
+                    .next()
+                    .ok_or_else(|| "--protocol requires a version argument".to_string())?;
+                match version.as_str() {
+                    MCP_PROTOCOL_VERSION => {}
+                    MCP_PROTOCOL_VERSION_MODERN => config.modern = true,
+                    other => {
+                        return Err(format!(
+                            "unsupported protocol version '{other}' \
+                             (supported: {MCP_PROTOCOL_VERSION}, {MCP_PROTOCOL_VERSION_MODERN})"
+                        ));
+                    }
+                }
+            }
+            other => return Err(format!("unknown argument '{other}'")),
+        }
+    }
+    Ok(config)
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -196,12 +267,33 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Parse CLI arguments
+    let raw_args: Vec<String> = env::args().skip(1).collect();
+    if raw_args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        println!("{}", usage());
+        return Ok(());
+    }
+    let config = match parse_args(&raw_args) {
+        Ok(config) => Arc::new(config),
+        Err(err) => {
+            eprintln!("error: {err}\n\n{}", usage());
+            std::process::exit(2);
+        }
+    };
+
     // Get bind address from environment or use default
     let bind_address =
         env::var("BIND_ADDRESS").unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_string());
 
     info!("{} v{} starting...", APP_NAME, APP_VERSION);
     info!("Binding to: {}", bind_address);
+    info!(
+        "MCP protocol versions: {}",
+        config.supported_versions().join(", ")
+    );
+    if config.strict {
+        info!("Strict negotiation: unsupported versions rejected (no fallback)");
+    }
 
     // Build router with health check endpoint and REST API for benchmarking
     let router = Router::new()
@@ -215,7 +307,8 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/mcp",
             axum::routing::post(mcp_handler).delete(mcp_delete_handler),
-        );
+        )
+        .with_state(config);
 
     // Bind and serve
     let tcp_listener = tokio::net::TcpListener::bind(&bind_address)
@@ -261,11 +354,15 @@ async fn health_handler() -> axum::Json<serde_json::Value> {
 }
 
 // Version handler
-async fn version_handler() -> axum::Json<serde_json::Value> {
+async fn version_handler(
+    axum::extract::State(config): axum::extract::State<Arc<ServerConfig>>,
+) -> axum::Json<serde_json::Value> {
     axum::Json(json!({
         "name": APP_NAME,
         "version": APP_VERSION,
-        "mcp_version": MCP_PROTOCOL_VERSION
+        "mcp_version": MCP_PROTOCOL_VERSION,
+        "mcp_versions": config.supported_versions(),
+        "strict": config.strict
     }))
 }
 
@@ -285,6 +382,7 @@ async fn mcp_delete_handler(headers: HeaderMap) -> StatusCode {
 }
 
 async fn mcp_handler(
+    axum::extract::State(config): axum::extract::State<Arc<ServerConfig>>,
     headers: HeaderMap,
     axum::Json(req): axum::Json<serde_json::Value>,
 ) -> Response {
@@ -295,14 +393,19 @@ async fn mcp_handler(
     let id = req.get("id");
 
     if method != "initialize" {
+        // A request carrying a per-request protocol version in `_meta` speaks
+        // the modern era and is served statelessly, without a session.
+        if let Some(requested) = modern_protocol_version(&req) {
+            return mcp_modern_dispatch(&config, &headers, id, method, requested, &req).await;
+        }
         let Err(status) = mcp_validate_active_session(&headers) else {
             if id.is_none() {
                 return StatusCode::ACCEPTED.into_response();
             }
             return match method {
-                "ping" => mcp_empty_result_response(id),
-                "tools/list" => mcp_tools_list_response(id),
-                "tools/call" => mcp_tools_call_response(id, &req).await,
+                "ping" => mcp_empty_result_response(id, false),
+                "tools/list" => mcp_tools_list_response(id, false),
+                "tools/call" => mcp_tools_call_response(id, &req, false).await,
                 _ => mcp_error_response(id, -32601, "Method not found", None),
             };
         };
@@ -317,9 +420,91 @@ async fn mcp_handler(
     }
 
     match method {
-        "initialize" => mcp_initialize_response(id),
+        "initialize" => mcp_initialize_response(id, &req, &config),
         _ => mcp_error_response(id, -32601, "Method not found", None),
     }
+}
+
+fn modern_protocol_version(req: &serde_json::Value) -> Option<&str> {
+    req.get("params")?
+        .get("_meta")?
+        .get(PROTOCOL_VERSION_META_KEY)?
+        .as_str()
+}
+
+async fn mcp_modern_dispatch(
+    config: &ServerConfig,
+    headers: &HeaderMap,
+    id: Option<&serde_json::Value>,
+    method: &str,
+    requested: &str,
+    req: &serde_json::Value,
+) -> Response {
+    // The mirrored MCP-Protocol-Version header must agree with the body; a
+    // missing header is tolerated (the body `_meta` is authoritative here).
+    if let Some(header_version) = headers
+        .get(PROTOCOL_VERSION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        && header_version != requested
+    {
+        return mcp_error_response_with_status(
+            StatusCode::BAD_REQUEST,
+            id,
+            ERR_HEADER_MISMATCH,
+            &format!(
+                "Header mismatch: {PROTOCOL_VERSION_HEADER} header value \
+                 '{header_version}' does not match body value '{requested}'"
+            ),
+            None,
+        );
+    }
+    if !config.modern || requested != MCP_PROTOCOL_VERSION_MODERN {
+        return mcp_error_response_with_status(
+            StatusCode::BAD_REQUEST,
+            id,
+            ERR_UNSUPPORTED_PROTOCOL_VERSION,
+            "Unsupported protocol version",
+            Some(json!({
+                "supported": config.supported_versions(),
+                "requested": requested,
+            })),
+        );
+    }
+    let Some(id) = id else {
+        return StatusCode::ACCEPTED.into_response();
+    };
+    match method {
+        "ping" => mcp_empty_result_response(Some(id), true),
+        "server/discover" => mcp_discover_response(Some(id), config),
+        "tools/list" => mcp_tools_list_response(Some(id), true),
+        "tools/call" => mcp_tools_call_response(Some(id), req, true).await,
+        _ => mcp_error_response_with_status(
+            StatusCode::NOT_FOUND,
+            Some(id),
+            -32601,
+            "Method not found",
+            None,
+        ),
+    }
+}
+
+fn mcp_discover_response(id: Option<&serde_json::Value>, config: &ServerConfig) -> Response {
+    mcp_json_response(
+        json!({
+            "jsonrpc": "2.0",
+            "id": id.cloned().unwrap_or(serde_json::Value::Null),
+            "result": {
+                "resultType": "complete",
+                "supportedVersions": config.supported_versions(),
+                "capabilities": { "tools": {} },
+                "_meta": {
+                    SERVER_INFO_META_KEY: { "name": APP_NAME, "version": APP_VERSION }
+                },
+                "instructions": "Ultra-fast MCP test server."
+            }
+        })
+        .to_string(),
+    )
 }
 
 fn mcp_json_response(body: String) -> Response {
@@ -331,7 +516,26 @@ fn mcp_id_json(id: Option<&serde_json::Value>) -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
-fn mcp_initialize_response(id: Option<&serde_json::Value>) -> Response {
+fn mcp_initialize_response(
+    id: Option<&serde_json::Value>,
+    req: &serde_json::Value,
+    config: &ServerConfig,
+) -> Response {
+    let requested = req
+        .get("params")
+        .and_then(|params| params.get("protocolVersion"))
+        .and_then(serde_json::Value::as_str);
+    if config.strict && requested != Some(MCP_PROTOCOL_VERSION) {
+        return mcp_error_response(
+            id,
+            -32602,
+            "Unsupported protocol version",
+            Some(json!({
+                "supported": config.supported_versions(),
+                "requested": requested,
+            })),
+        );
+    }
     let session_id = Uuid::new_v4().to_string();
     let session_header = HeaderValue::from_str(&session_id)
         .unwrap_or_else(|_| HeaderValue::from_static("fast-time"));
@@ -394,10 +598,19 @@ fn mcp_validate_active_session(headers: &HeaderMap) -> Result<(), StatusCode> {
     }
 }
 
-fn mcp_tools_list_response(id: Option<&serde_json::Value>) -> Response {
+fn result_type_field(modern: bool) -> &'static str {
+    if modern {
+        r#""resultType":"complete","#
+    } else {
+        ""
+    }
+}
+
+fn mcp_tools_list_response(id: Option<&serde_json::Value>, modern: bool) -> Response {
     mcp_json_response(format!(
-        r#"{{"jsonrpc":"2.0","id":{},"result":{{"tools":[{{"name":"echo","description":"Echo back the provided message.","inputSchema":{{"type":"object","properties":{{"message":{{"type":"string"}},"delay":{{"type":"integer","minimum":0,"maximum":60000}},"delay_stddev":{{"type":"number","minimum":0}}}},"required":["message"]}}}},{{"name":"flaky","description":"Return isError=true for the first fail_times calls per key, then succeed (retry testing).","inputSchema":{{"type":"object","properties":{{"key":{{"type":"string","description":"Unique key to track attempt count across retries"}},"fail_times":{{"type":"integer","minimum":0,"description":"Number of times to return isError=true before succeeding (default 0)"}}}},"required":["key"]}}}},{{"name":"get_system_time","description":"Get current system time in the specified IANA timezone.","inputSchema":{{"type":"object","properties":{{"timezone":{{"type":"string"}}}}}}}},{{"name":"convert_time","description":"Convert a time value from a source IANA timezone to a target IANA timezone.","inputSchema":{{"type":"object","properties":{{"time":{{"type":"string"}},"source_timezone":{{"type":"string"}},"target_timezone":{{"type":"string"}}}},"required":["time","source_timezone","target_timezone"]}}}},{{"name":"schema_error","description":"Always returns isError=true.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"schema_success","description":"Returns a JSON payload that conforms to the declared outputSchema.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"get_stats","description":"Get server statistics including request count and uptime.","inputSchema":{{"type":"object","properties":{{}}}}}}]}}}}"#,
-        mcp_id_json(id)
+        r#"{{"jsonrpc":"2.0","id":{},"result":{{{}"tools":[{{"name":"echo","description":"Echo back the provided message.","inputSchema":{{"type":"object","properties":{{"message":{{"type":"string"}},"delay":{{"type":"integer","minimum":0,"maximum":60000}},"delay_stddev":{{"type":"number","minimum":0}}}},"required":["message"]}}}},{{"name":"flaky","description":"Return isError=true for the first fail_times calls per key, then succeed (retry testing).","inputSchema":{{"type":"object","properties":{{"key":{{"type":"string","description":"Unique key to track attempt count across retries"}},"fail_times":{{"type":"integer","minimum":0,"description":"Number of times to return isError=true before succeeding (default 0)"}}}},"required":["key"]}}}},{{"name":"get_system_time","description":"Get current system time in the specified IANA timezone.","inputSchema":{{"type":"object","properties":{{"timezone":{{"type":"string"}}}}}}}},{{"name":"convert_time","description":"Convert a time value from a source IANA timezone to a target IANA timezone.","inputSchema":{{"type":"object","properties":{{"time":{{"type":"string"}},"source_timezone":{{"type":"string"}},"target_timezone":{{"type":"string"}}}},"required":["time","source_timezone","target_timezone"]}}}},{{"name":"schema_error","description":"Always returns isError=true.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"schema_success","description":"Returns a JSON payload that conforms to the declared outputSchema.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"get_stats","description":"Get server statistics including request count and uptime.","inputSchema":{{"type":"object","properties":{{}}}}}}]}}}}"#,
+        mcp_id_json(id),
+        result_type_field(modern)
     ))
 }
 
@@ -408,6 +621,7 @@ fn mcp_session_id(headers: &HeaderMap) -> Option<&str> {
 async fn mcp_tools_call_response(
     id: Option<&serde_json::Value>,
     req: &serde_json::Value,
+    modern: bool,
 ) -> Response {
     let params = req.get("params").unwrap_or(&serde_json::Value::Null);
     let name = params
@@ -441,7 +655,7 @@ async fn mcp_tools_call_response(
                 let actual_ms = compute_delay(ms, delay_stddev);
                 tokio::time::sleep(std::time::Duration::from_millis(actual_ms)).await;
             }
-            mcp_text_result_response(id, message, false)
+            mcp_text_result_response(id, message, false, modern)
         }
         "flaky" => {
             let Some(arguments) = mcp_arguments_object(id, arguments) else {
@@ -467,6 +681,7 @@ async fn mcp_tools_call_response(
                     id,
                     &format!("flaky transient failure (attempt {attempt}/{fail_times})"),
                     true,
+                    modern,
                 )
             } else {
                 state.remove(key);
@@ -474,6 +689,7 @@ async fn mcp_tools_call_response(
                     id,
                     &format!("flaky recovered after {attempt} attempt(s)"),
                     false,
+                    modern,
                 )
             }
         }
@@ -494,25 +710,27 @@ async fn mcp_tools_call_response(
             DIRECT_REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
             match parse_timezone(timezone) {
                 Ok(timezone) => {
-                    mcp_text_result_response(id, &timezone.format_utc(Utc::now()), false)
+                    mcp_text_result_response(id, &timezone.format_utc(Utc::now()), false, modern)
                 }
                 Err(err) => mcp_text_result_response(
                     id,
                     &format!("Invalid timezone '{timezone}': {err}"),
                     true,
+                    modern,
                 ),
             }
         }
-        "convert_time" => mcp_convert_time_response(id, arguments),
+        "convert_time" => mcp_convert_time_response(id, arguments, modern),
         "schema_error" => {
             DIRECT_REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
-            mcp_text_result_response(id, "You cannot send more than 200 points", true)
+            mcp_text_result_response(id, "You cannot send more than 200 points", true, modern)
         }
         "schema_success" => mcp_json_response({
             DIRECT_REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
             format!(
-                r#"{{"jsonrpc":"2.0","id":{},"result":{{"content":[{{"type":"text","text":"{{\"recognitionId\":\"rec-123\",\"message\":\"ok\"}}"}}],"structuredContent":{{"recognitionId":"rec-123","message":"ok"}},"isError":false}}}}"#,
-                mcp_id_json(id)
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{{}"content":[{{"type":"text","text":"{{\"recognitionId\":\"rec-123\",\"message\":\"ok\"}}"}}],"structuredContent":{{"recognitionId":"rec-123","message":"ok"}},"isError":false}}}}"#,
+                mcp_id_json(id),
+                result_type_field(modern)
             )
         }),
         "get_stats" => {
@@ -524,6 +742,7 @@ async fn mcp_tools_call_response(
                     APP_NAME, APP_VERSION, count
                 ),
                 false,
+                modern,
             )
         }
         _ => mcp_error_response(id, -32602, "Unknown tool", Some(json!({ "tool": name }))),
@@ -533,6 +752,7 @@ async fn mcp_tools_call_response(
 fn mcp_convert_time_response(
     id: Option<&serde_json::Value>,
     arguments: &serde_json::Value,
+    modern: bool,
 ) -> Response {
     let Some(arguments) = mcp_arguments_object(id, arguments) else {
         return mcp_invalid_params_response(id, "arguments must be an object");
@@ -552,21 +772,33 @@ fn mcp_convert_time_response(
     let source_timezone = match parse_timezone(source_timezone) {
         Ok(timezone) => timezone,
         Err(err) => {
-            return mcp_text_result_response(id, &format!("invalid source timezone: {err}"), true);
+            return mcp_text_result_response(
+                id,
+                &format!("invalid source timezone: {err}"),
+                true,
+                modern,
+            );
         }
     };
     let target_timezone = match parse_timezone(target_timezone) {
         Ok(timezone) => timezone,
         Err(err) => {
-            return mcp_text_result_response(id, &format!("invalid target timezone: {err}"), true);
+            return mcp_text_result_response(
+                id,
+                &format!("invalid target timezone: {err}"),
+                true,
+                modern,
+            );
         }
     };
     match parse_time_in_timezone(time, &source_timezone) {
         Ok(parsed) => {
             let converted = target_timezone.format_utc(parsed);
-            mcp_text_result_response(id, &converted, false)
+            mcp_text_result_response(id, &converted, false, modern)
         }
-        Err(_) => mcp_text_result_response(id, &format!("invalid time format: {time}"), true),
+        Err(_) => {
+            mcp_text_result_response(id, &format!("invalid time format: {time}"), true, modern)
+        }
     }
 }
 
@@ -625,20 +857,28 @@ fn mcp_text_result_response(
     id: Option<&serde_json::Value>,
     text: &str,
     is_error: bool,
+    modern: bool,
 ) -> Response {
     let escaped = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
     mcp_json_response(format!(
-        r#"{{"jsonrpc":"2.0","id":{},"result":{{"content":[{{"type":"text","text":{}}}],"isError":{}}}}}"#,
+        r#"{{"jsonrpc":"2.0","id":{},"result":{{{}"content":[{{"type":"text","text":{}}}],"isError":{}}}}}"#,
         mcp_id_json(id),
+        result_type_field(modern),
         escaped,
         is_error
     ))
 }
 
-fn mcp_empty_result_response(id: Option<&serde_json::Value>) -> Response {
+fn mcp_empty_result_response(id: Option<&serde_json::Value>, modern: bool) -> Response {
+    let result = if modern {
+        r#"{"resultType":"complete"}"#
+    } else {
+        "{}"
+    };
     mcp_json_response(format!(
-        r#"{{"jsonrpc":"2.0","id":{},"result":{{}}}}"#,
-        mcp_id_json(id)
+        r#"{{"jsonrpc":"2.0","id":{},"result":{}}}"#,
+        mcp_id_json(id),
+        result
     ))
 }
 
@@ -740,6 +980,10 @@ async fn rest_time_handler(
 mod tests {
     use super::*;
     use axum::body;
+
+    fn default_state() -> axum::extract::State<Arc<ServerConfig>> {
+        axum::extract::State(Arc::new(ServerConfig::default()))
+    }
 
     #[test]
     fn test_parse_utc() {
@@ -871,6 +1115,7 @@ mod tests {
 
     async fn initialized_headers() -> HeaderMap {
         let response = mcp_handler(
+            default_state(),
             HeaderMap::new(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -901,13 +1146,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_endpoint_advertises_latest_protocol() {
-        let version = version_handler().await;
+        let version = version_handler(default_state()).await;
         assert_eq!(version.0["mcp_version"], MCP_PROTOCOL_VERSION);
     }
 
     #[tokio::test]
     async fn test_initialize_accepts_older_protocol_and_advertises_latest() {
         let response = mcp_handler(
+            default_state(),
             HeaderMap::new(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -947,6 +1193,7 @@ mod tests {
         // First two calls should be errors
         for attempt in 1..=2u64 {
             let response = mcp_handler(
+                default_state(),
                 initialized_headers().await,
                 axum::Json(json!({
                     "jsonrpc": "2.0",
@@ -963,10 +1210,14 @@ mod tests {
             )
             .await;
             let body = response_json(response).await;
-            assert_eq!(body["result"]["isError"], true, "attempt {attempt} should be isError");
+            assert_eq!(
+                body["result"]["isError"], true,
+                "attempt {attempt} should be isError"
+            );
         }
         // Third call should succeed
         let response = mcp_handler(
+            default_state(),
             initialized_headers().await,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -983,7 +1234,10 @@ mod tests {
         )
         .await;
         let body = response_json(response).await;
-        assert_eq!(body["result"]["isError"], false, "third attempt should succeed");
+        assert_eq!(
+            body["result"]["isError"], false,
+            "third attempt should succeed"
+        );
         assert!(
             body["result"]["content"][0]["text"]
                 .as_str()
@@ -995,6 +1249,7 @@ mod tests {
     #[tokio::test]
     async fn test_direct_mcp_session_lifecycle_matches_streamable_http() {
         let initialize = mcp_handler(
+            default_state(),
             HeaderMap::new(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1020,6 +1275,7 @@ mod tests {
         let mut valid_headers = HeaderMap::new();
         valid_headers.insert(SESSION_HEADER, session_id.clone());
         let valid = mcp_handler(
+            default_state(),
             valid_headers.clone(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1031,6 +1287,7 @@ mod tests {
         assert_eq!(valid.status(), StatusCode::OK);
 
         let ping = mcp_handler(
+            default_state(),
             valid_headers.clone(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1044,6 +1301,7 @@ mod tests {
         assert_eq!(ping_body["result"], json!({}));
 
         let missing = mcp_handler(
+            default_state(),
             HeaderMap::new(),
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1057,6 +1315,7 @@ mod tests {
         let mut fake_headers = HeaderMap::new();
         fake_headers.insert(SESSION_HEADER, HeaderValue::from_static("fake-session"));
         let fake = mcp_handler(
+            default_state(),
             fake_headers,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1072,6 +1331,7 @@ mod tests {
             StatusCode::OK
         );
         let deleted = mcp_handler(
+            default_state(),
             valid_headers,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1086,6 +1346,7 @@ mod tests {
     #[tokio::test]
     async fn test_convert_time_matches_go_fast_time_dst_behavior() {
         let response = mcp_handler(
+            default_state(),
             initialized_headers().await,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1114,6 +1375,7 @@ mod tests {
     #[tokio::test]
     async fn test_convert_time_matches_go_fast_time_half_hour_zones() {
         let response = mcp_handler(
+            default_state(),
             initialized_headers().await,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1158,6 +1420,7 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_echo_rejects_delay_above_limit() {
         let response = mcp_handler(
+            default_state(),
             initialized_headers().await,
             axum::Json(json!({
                 "jsonrpc": "2.0",
@@ -1178,5 +1441,236 @@ mod tests {
         let body = response_json(response).await;
         assert_eq!(body["error"]["code"], -32602);
         assert_eq!(body["error"]["message"], "delay exceeds the 60000 ms limit");
+    }
+
+    #[test]
+    fn test_parse_args_defaults_to_legacy_only() {
+        let config = parse_args(&[]).unwrap();
+        assert_eq!(config, ServerConfig::default());
+        assert_eq!(config.supported_versions(), vec!["2025-11-25"]);
+    }
+
+    #[test]
+    fn test_parse_args_enables_modern_and_strict() {
+        let args: Vec<String> = ["--protocol", "2026-07-28", "--strict"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let config = parse_args(&args).unwrap();
+        assert!(config.modern);
+        assert!(config.strict);
+        assert_eq!(
+            config.supported_versions(),
+            vec!["2026-07-28", "2025-11-25"]
+        );
+    }
+
+    #[test]
+    fn test_parse_args_rejects_unknown_version_and_missing_value() {
+        let bad: Vec<String> = ["--protocol", "1999-01-01"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(parse_args(&bad).is_err());
+        let missing: Vec<String> = ["--protocol"].iter().map(ToString::to_string).collect();
+        assert!(parse_args(&missing).is_err());
+        let unknown: Vec<String> = ["--frobnicate"].iter().map(ToString::to_string).collect();
+        assert!(parse_args(&unknown).is_err());
+    }
+
+    fn modern_state() -> axum::extract::State<Arc<ServerConfig>> {
+        axum::extract::State(Arc::new(ServerConfig {
+            modern: true,
+            strict: false,
+        }))
+    }
+
+    fn strict_state() -> axum::extract::State<Arc<ServerConfig>> {
+        axum::extract::State(Arc::new(ServerConfig {
+            modern: true,
+            strict: true,
+        }))
+    }
+
+    fn modern_request(method: &str, version: &str, id: i64) -> serde_json::Value {
+        json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": version,
+                    "io.modelcontextprotocol/clientCapabilities": {}
+                }
+            },
+            "id": id
+        })
+    }
+
+    #[tokio::test]
+    async fn test_modern_request_rejected_when_modern_not_enabled() {
+        let response = mcp_handler(
+            default_state(),
+            HeaderMap::new(),
+            axum::Json(modern_request("tools/list", "2026-07-28", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], -32022);
+        assert_eq!(body["error"]["data"]["supported"], json!(["2025-11-25"]));
+        assert_eq!(body["error"]["data"]["requested"], "2026-07-28");
+    }
+
+    #[tokio::test]
+    async fn test_server_discover_lists_supported_versions() {
+        let response = mcp_handler(
+            modern_state(),
+            HeaderMap::new(),
+            axum::Json(modern_request("server/discover", "2026-07-28", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        let result = &body["result"];
+        assert_eq!(result["resultType"], "complete");
+        assert_eq!(
+            result["supportedVersions"],
+            json!(["2026-07-28", "2025-11-25"])
+        );
+        assert_eq!(
+            result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            APP_NAME
+        );
+        assert!(result["capabilities"]["tools"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_modern_tools_call_needs_no_session() {
+        let mut request = modern_request("tools/call", "2026-07-28", 7);
+        request["params"]["name"] = json!("echo");
+        request["params"]["arguments"] = json!({ "message": "hi" });
+        let response = mcp_handler(modern_state(), HeaderMap::new(), axum::Json(request)).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["result"]["resultType"], "complete");
+        assert_eq!(body["result"]["content"][0]["text"], "hi");
+        assert_eq!(body["result"]["isError"], false);
+    }
+
+    #[tokio::test]
+    async fn test_modern_version_mismatch_returns_unsupported_error() {
+        let response = mcp_handler(
+            modern_state(),
+            HeaderMap::new(),
+            axum::Json(modern_request("tools/list", "2025-06-18", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], -32022);
+        assert_eq!(
+            body["error"]["data"]["supported"],
+            json!(["2026-07-28", "2025-11-25"])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_modern_header_mismatch_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            PROTOCOL_VERSION_HEADER,
+            HeaderValue::from_static("2025-06-18"),
+        );
+        let response = mcp_handler(
+            modern_state(),
+            headers,
+            axum::Json(modern_request("ping", "2026-07-28", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], -32020);
+    }
+
+    #[tokio::test]
+    async fn test_modern_unknown_method_is_not_found() {
+        let response = mcp_handler(
+            modern_state(),
+            HeaderMap::new(),
+            axum::Json(modern_request("resources/list", "2026-07-28", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], -32601);
+    }
+
+    fn initialize_request(protocol_version: &str) -> serde_json::Value {
+        json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": protocol_version,
+                "capabilities": {},
+                "clientInfo": { "name": "test", "version": "1.0" }
+            },
+            "id": 1
+        })
+    }
+
+    #[tokio::test]
+    async fn test_strict_initialize_rejects_unsupported_version() {
+        let response = mcp_handler(
+            strict_state(),
+            HeaderMap::new(),
+            axum::Json(initialize_request("2024-11-05")),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get(SESSION_HEADER).is_none());
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], -32602);
+        assert_eq!(body["error"]["message"], "Unsupported protocol version");
+        assert_eq!(
+            body["error"]["data"]["supported"],
+            json!(["2026-07-28", "2025-11-25"])
+        );
+        assert_eq!(body["error"]["data"]["requested"], "2024-11-05");
+    }
+
+    #[tokio::test]
+    async fn test_strict_initialize_accepts_supported_version() {
+        let response = mcp_handler(
+            strict_state(),
+            HeaderMap::new(),
+            axum::Json(initialize_request("2025-11-25")),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().contains_key(SESSION_HEADER));
+        let body = response_text(response).await;
+        assert!(body.contains(r#""protocolVersion":"2025-11-25""#));
+    }
+
+    #[tokio::test]
+    async fn test_non_strict_initialize_falls_back_to_legacy_version() {
+        let response = mcp_handler(
+            modern_state(),
+            HeaderMap::new(),
+            axum::Json(initialize_request("2024-11-05")),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains(r#""protocolVersion":"2025-11-25""#));
     }
 }
