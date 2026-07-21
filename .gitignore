@@ -1,5 +1,6 @@
-# Bob Shell temporary files
+# AI code assistant temporary files
 .bob/
+.omo/
 
 # Rust
 target/
