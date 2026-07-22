@@ -522,6 +522,9 @@ fn mcp_discover_response(id: Option<&serde_json::Value>, config: &ServerConfig) 
                 "resultType": "complete",
                 "supportedVersions": config.supported_versions(),
                 "capabilities": { "tools": {} },
+                "serverInfo": { "name": APP_NAME, "version": APP_VERSION },
+                "cacheScope": "private",
+                "ttlMs": 0,
                 "_meta": {
                     SERVER_INFO_META_KEY: { "name": APP_NAME, "version": APP_VERSION }
                 },
@@ -631,11 +634,21 @@ fn result_type_field(modern: bool) -> &'static str {
     }
 }
 
+// CacheableResult responses (tools/list, server/discover) additionally
+// require cacheScope and ttlMs on the 2026-07-28 wire.
+fn cacheable_result_fields(modern: bool) -> &'static str {
+    if modern {
+        r#""resultType":"complete","cacheScope":"private","ttlMs":0,"#
+    } else {
+        ""
+    }
+}
+
 fn mcp_tools_list_response(id: Option<&serde_json::Value>, modern: bool) -> Response {
     mcp_json_response(format!(
         r#"{{"jsonrpc":"2.0","id":{},"result":{{{}"tools":[{{"name":"echo","description":"Echo back the provided message.","inputSchema":{{"type":"object","properties":{{"message":{{"type":"string"}},"delay":{{"type":"integer","minimum":0,"maximum":60000}},"delay_stddev":{{"type":"number","minimum":0}}}},"required":["message"]}}}},{{"name":"flaky","description":"Return isError=true for the first fail_times calls per key, then succeed (retry testing).","inputSchema":{{"type":"object","properties":{{"key":{{"type":"string","description":"Unique key to track attempt count across retries"}},"fail_times":{{"type":"integer","minimum":0,"description":"Number of times to return isError=true before succeeding (default 0)"}}}},"required":["key"]}}}},{{"name":"get_system_time","description":"Get current system time in the specified IANA timezone.","inputSchema":{{"type":"object","properties":{{"timezone":{{"type":"string"}}}}}}}},{{"name":"convert_time","description":"Convert a time value from a source IANA timezone to a target IANA timezone.","inputSchema":{{"type":"object","properties":{{"time":{{"type":"string"}},"source_timezone":{{"type":"string"}},"target_timezone":{{"type":"string"}}}},"required":["time","source_timezone","target_timezone"]}}}},{{"name":"schema_error","description":"Always returns isError=true.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"schema_success","description":"Returns a JSON payload that conforms to the declared outputSchema.","inputSchema":{{"type":"object","properties":{{}}}},"outputSchema":{{"type":"object","properties":{{"recognitionId":{{"type":"string"}},"message":{{"type":"string"}}}},"required":["recognitionId"]}}}},{{"name":"get_stats","description":"Get server statistics including request count and uptime.","inputSchema":{{"type":"object","properties":{{}}}}}}]}}}}"#,
         mcp_id_json(id),
-        result_type_field(modern)
+        cacheable_result_fields(modern)
     ))
 }
 
@@ -1606,11 +1619,34 @@ mod tests {
             result["supportedVersions"],
             json!(["2026-07-28", "2025-11-25"])
         );
+        // mcp_types 2.0.0b2 (v2026_07_28 wire models) requires serverInfo,
+        // cacheScope, and ttlMs as top-level DiscoverResult fields.
+        assert_eq!(result["serverInfo"]["name"], APP_NAME);
+        assert_eq!(result["cacheScope"], "private");
+        assert_eq!(result["ttlMs"], 0);
         assert_eq!(
             result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
             APP_NAME
         );
         assert!(result["capabilities"]["tools"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_modern_tools_list_includes_cacheable_result_fields() {
+        let response = mcp_handler(
+            modern_state(),
+            HeaderMap::new(),
+            axum::Json(modern_request("tools/list", "2026-07-28", 1)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        let result = &body["result"];
+        assert_eq!(result["resultType"], "complete");
+        assert_eq!(result["cacheScope"], "private");
+        assert_eq!(result["ttlMs"], 0);
+        assert!(result["tools"].as_array().unwrap().len() >= 7);
     }
 
     #[tokio::test]
