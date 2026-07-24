@@ -385,6 +385,7 @@ dependencies = [
  "similar",
  "tempfile",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "uuid",

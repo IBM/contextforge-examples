@@ -64,28 +64,42 @@ make install        # Install to ~/.cargo/bin
 ### Using Cargo Directly
 
 ```bash
-# Run with roots
+# Run with roots (binds to 127.0.0.1:8084 by default)
 cargo run -- --roots /tmp /var/www /home/user/projects
+
+# Expose on the network (requires a bearer token)
+cargo run -- --roots /tmp --bind 0.0.0.0:8084 --auth-token "$FILESYSTEM_SERVER_AUTH_TOKEN"
 
 # Test
 cargo test
 ```
 
+### CLI Options
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--roots <paths...>` | (none) | Sandbox root directories (space-separated). |
+| `--bind <ip:port>` | `127.0.0.1:8084` | Address the HTTP server binds to. Non-loopback addresses require `--auth-token`. |
+| `--auth-token <token>` | (none) | Bearer token required in the `Authorization` header of every request. May also be set via the `FILESYSTEM_SERVER_AUTH_TOKEN` environment variable. |
+
 ### Using docker
 
 ```bash
-# Single root
+# Single root - containers must bind 0.0.0.0 to be reachable from the host,
+# which requires a bearer token
 docker run \
   -p 8084:8084 \
+  -e FILESYSTEM_SERVER_AUTH_TOKEN="$FILESYSTEM_SERVER_AUTH_TOKEN" \
   -v /tmp:/tmp \
-  filesystem-server --roots /tmp
+  filesystem-server --roots /tmp --bind 0.0.0.0:8084
 
 # Multiple roots - mount and pass as arguments
 docker run \
   -p 8084:8084 \
+  -e FILESYSTEM_SERVER_AUTH_TOKEN="$FILESYSTEM_SERVER_AUTH_TOKEN" \
   -v /var/www:/www \
   -v /tmp:/tmp \
-  filesystem-server --roots "/www /tmp"
+  filesystem-server --roots "/www /tmp" --bind 0.0.0.0:8084
 ```
 Image size: ~10 MB (binary: 3.2 MB + Debian slim base)
 
@@ -164,6 +178,8 @@ Makefile           # Build & test automation
 
 - **Sandbox**: All paths resolved against configured roots only
 - **Symlink blocking**: Traversal across symlinks blocked
+- **Loopback by default**: Binds to `127.0.0.1:8084`; binding to a non-loopback address is refused unless `--auth-token` is set
+- **Bearer authentication**: When `--auth-token` (or `FILESYSTEM_SERVER_AUTH_TOKEN`) is set, every HTTP request must present `Authorization: Bearer <token>`; tokens are compared in constant time
 - **Atomic writes**: File modifications are atomic via temporary files
 - **Dry-run support**: `edit_file` with `dry_run=true` previews changes without modifying
 

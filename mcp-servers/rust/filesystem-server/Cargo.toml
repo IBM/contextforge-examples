@@ -33,6 +33,9 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { version = "1.23.0", features = ["v4"] }
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
 [lints.clippy]
 multiple_crate_versions = "allow"
 

@@ -58,10 +58,47 @@ pub async fn create_directory(sandbox: &Sandbox, path: &str) -> Result<String> {
         anyhow::bail!("Path '{}' already exists", path);
     }
 
+    // Defense in depth: reject '..' components outright so directory
+    // creation always stays within the configured roots. This tool has no
+    // legitimate need for them.
+    if Path::new(path)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        tracing::warn!("Rejected path '{}' containing '..' components", path);
+        anyhow::bail!("Not authorized, path '{}' contains '..' components", path);
+    }
+
     if sandbox.check_new_folders(path).await? {
+        // Remember the shallowest not-yet-existing ancestor: the topmost
+        // directory create_dir_all() will create. Used to clean up exactly
+        // what we created if post-create validation fails, never anything
+        // that existed before.
+        let mut created_top = Path::new(path);
+        while let Some(parent) = created_top.parent() {
+            if parent.as_os_str().is_empty() || fs::metadata(parent).await.is_ok() {
+                break;
+            }
+            created_top = parent;
+        }
+
         fs::create_dir_all(path)
             .await
             .with_context(|| format!("Could not create dir {}", path))?;
+
+        // Defense in depth: validate-after-create. Canonicalize the now-real
+        // path and enforce the sandbox roots exactly like resolve_path()
+        // does for the other tools, so nothing can ever resolve outside
+        // them.
+        if sandbox.resolve_path(path).await.is_err() {
+            tracing::warn!(
+                "Created path '{}' resolved outside sandbox roots; removing '{}'",
+                path,
+                created_top.display()
+            );
+            let _ = fs::remove_dir_all(created_top).await;
+            anyhow::bail!("Not authorized, path '{}' outside roots", path);
+        }
         tracing::info!("Path '{}' created.", path);
     } else {
         tracing::warn!("Not authorized, path '{}' outside roots", path);
@@ -308,6 +345,109 @@ mod tests {
         let check_path = temp_dir.path().join("trailing");
         assert!(check_path.exists());
         assert_eq!(result, format!("Path '{}' created.", path));
+    }
+
+    // Regression tests: create_directory must never create directories
+    // outside the configured sandbox roots.
+
+    #[tokio::test]
+    async fn test_create_directory_rejects_dotdot_outside_root() {
+        let base = TempDir::new().unwrap();
+        let root = base.path().join("allowed_root");
+        fs::create_dir(&root).await.unwrap();
+        let root_str = root.to_string_lossy().to_string();
+        let sandbox = Sandbox::new(vec![root_str]).await.unwrap();
+
+        let outside = base.path().join("outside_target_dir");
+        let malicious = root
+            .join("missing_subdir")
+            .join("..")
+            .join("..")
+            .join("outside_target_dir");
+
+        let result = create_directory(&sandbox, malicious.to_str().unwrap()).await;
+        assert!(
+            result.is_err(),
+            "create_directory accepted an escaping path: {}",
+            malicious.display()
+        );
+        assert!(
+            !outside.exists(),
+            "directory was created outside the sandbox root"
+        );
+        assert!(
+            !root.join("missing_subdir").exists(),
+            "intermediate debris was left inside the sandbox root"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_directory_dotdot_does_not_harm_existing_outside_dir() {
+        let base = TempDir::new().unwrap();
+        let root = base.path().join("allowed_root");
+        fs::create_dir(&root).await.unwrap();
+        let root_str = root.to_string_lossy().to_string();
+        let sandbox = Sandbox::new(vec![root_str]).await.unwrap();
+
+        // A pre-existing directory outside the sandbox must survive a
+        // rejected request untouched.
+        let outside = base.path().join("outside_target_dir");
+        fs::create_dir(&outside).await.unwrap();
+        fs::write(outside.join("marker.txt"), "do not delete")
+            .await
+            .unwrap();
+
+        let malicious = root
+            .join("missing_subdir")
+            .join("..")
+            .join("..")
+            .join("outside_target_dir");
+
+        let result = create_directory(&sandbox, malicious.to_str().unwrap()).await;
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(outside.join("marker.txt"))
+                .await
+                .unwrap(),
+            "do not delete"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_directory_rejects_dotdot_staying_inside() {
+        // Even '..' paths that would resolve back inside the sandbox are
+        // rejected: create_directory has no legitimate need for them, and
+        // accepting them leaves empty debris directories behind.
+        let temp_dir = TempDir::new().unwrap();
+        let sandbox = setup_sandbox(&temp_dir).await;
+
+        let path = temp_dir.path().join("a").join("..").join("b");
+        let result = create_directory(&sandbox, path.to_str().unwrap()).await;
+        assert!(result.is_err());
+        assert!(!temp_dir.path().join("a").exists());
+        assert!(!temp_dir.path().join("b").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_create_directory_through_symlink_rejected() {
+        let base = TempDir::new().unwrap();
+        let root = base.path().join("allowed_root");
+        fs::create_dir(&root).await.unwrap();
+        let root_str = root.to_string_lossy().to_string();
+        let sandbox = Sandbox::new(vec![root_str]).await.unwrap();
+
+        let outside = base.path().join("outside");
+        fs::create_dir(&outside).await.unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+
+        let target = root.join("link").join("newdir");
+        let result = create_directory(&sandbox, target.to_str().unwrap()).await;
+        assert!(result.is_err());
+        assert!(
+            !outside.join("newdir").exists(),
+            "directory created outside the root via symlink"
+        );
     }
 
     #[tokio::test]
