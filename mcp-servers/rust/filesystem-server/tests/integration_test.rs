@@ -533,7 +533,7 @@ mod comprehensive_tests {
         let root = temp_dir.path().to_string_lossy().to_string();
 
         // Build router with sandbox roots
-        let _router = build_router(vec![root.clone()])
+        let _router = build_router(vec![root.clone()], None)
             .await
             .expect("router build failed");
 
