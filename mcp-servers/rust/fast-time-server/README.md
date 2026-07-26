@@ -234,7 +234,8 @@ a mismatching `MCP-Protocol-Version` header is rejected with `HeaderMismatch`
 
 `--strict` makes the served set exact. `--protocol 2026-07-28 --strict` runs a
 pure `2026-07-28` server: every `initialize` call — including ones naming
-`2025-11-25` — is rejected with JSON-RPC error `-32602` whose `data.supported`
+`2025-11-25` — is rejected with an `UnsupportedProtocolVersionError` (`-32022`)
+whose `data.supported`
 lists only the configured revisions, and `server/discover` advertises only
 `2026-07-28`. To run a strict server that still accepts the legacy handshake,
 enable both revisions explicitly:
