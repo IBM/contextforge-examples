@@ -556,7 +556,7 @@ fn mcp_initialize_response(
     if config.strict && (!config.legacy || requested != Some(MCP_PROTOCOL_VERSION)) {
         return mcp_error_response(
             id,
-            -32602,
+            ERR_UNSUPPORTED_PROTOCOL_VERSION,
             "Unsupported protocol version",
             Some(json!({
                 "supported": config.supported_versions(),
@@ -1739,7 +1739,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.headers().get(SESSION_HEADER).is_none());
         let body = response_json(response).await;
-        assert_eq!(body["error"]["code"], -32602);
+        assert_eq!(body["error"]["code"], -32022);
         assert_eq!(body["error"]["message"], "Unsupported protocol version");
         assert_eq!(
             body["error"]["data"]["supported"],
@@ -1776,7 +1776,7 @@ mod tests {
             assert_eq!(response.status(), StatusCode::OK);
             assert!(response.headers().get(SESSION_HEADER).is_none());
             let body = response_json(response).await;
-            assert_eq!(body["error"]["code"], -32602);
+            assert_eq!(body["error"]["code"], -32022);
             assert_eq!(body["error"]["message"], "Unsupported protocol version");
             assert_eq!(
                 body["error"]["data"]["supported"],
