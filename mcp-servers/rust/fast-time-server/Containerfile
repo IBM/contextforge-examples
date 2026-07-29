@@ -15,7 +15,7 @@
 # =============================================================================
 # Build stage - Rust compilation against the full Cargo workspace
 # =============================================================================
-FROM docker.io/rustlang/rust:nightly-slim AS builder
+FROM docker.io/library/rust:1.97.1-slim AS builder
 
 WORKDIR /app
 
