@@ -2,7 +2,7 @@
 # Remove an entry when the corresponding server capability is implemented.
 server:
   - logging-set-level
-  - completion-complete
+  # - completion-complete
   - tools-call-simple-text
   - tools-call-image
   - tools-call-audio
@@ -15,13 +15,13 @@ server:
   - tools-call-elicitation
   - elicitation-sep1034-defaults
   - elicitation-sep1330-enums
-  - resources-list
+  # - resources-list
   - resources-read-text
   - resources-read-binary
   - resources-templates-read
   - resources-subscribe
   - resources-unsubscribe
-  - prompts-list
+  # - prompts-list
   - prompts-get-simple
   - prompts-get-with-args
   - prompts-get-embedded-resource
