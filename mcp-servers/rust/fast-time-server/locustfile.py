@@ -198,11 +198,13 @@ class RustMCPUser(FastHttpUser):
                 response.failure(f"Status {response.status_code}")
                 return None
 
-            # Parse SSE response format (data: {...})
+            # Parse SSE response format (data: {...}); the server may send a
+            # priming event with an empty payload first, so take the first
+            # non-empty data line.
             text = response.text.strip()
             for line in text.split("\n"):
                 line = line.strip()
-                if line.startswith("data:"):
+                if line.startswith("data:") and line[5:].strip():
                     text = line[5:].strip()
                     break
 

@@ -2,13 +2,13 @@
 
 > Author: Mihai Criveti
 
-Ultra-fast MCP server written in Rust for performance testing and benchmarking. Hand-rolled on axum with no SDK in the hot path.
+Ultra-fast MCP server written in Rust for performance testing and benchmarking. Built on the official [MCP Rust SDK](https://github.com/modelcontextprotocol/rust-sdk) (`rmcp`) with axum.
 
 ## Features
 
 - **Blazing fast**: Native Rust performance with zero-copy where possible
-- **Streamable HTTP**: Modern HTTP transport with streaming support
-- **Dual-era MCP**: Serves legacy `2025-11-25` (initialize handshake + sessions) by default, and optionally the modern `2026-07-28` revision (stateless, per-request `_meta`) via `--protocol` — see [Command-Line Flags](#command-line-flags)
+- **Streamable HTTP**: MCP Streamable HTTP transport served by the SDK's `StreamableHttpService`
+- **Dual-era MCP**: Legacy `2025-11-25` (initialize handshake + `mcp-session-id` sessions) and modern `2026-07-28` (stateless, per-request `_meta`) are served simultaneously on the same `/mcp` endpoint — no flags, no modes
 - **Minimal overhead**: No auth, no database, pure compute
 - **Tools**:
   - `echo` - Echoes back the provided message (with optional delay/jitter)
@@ -17,21 +17,16 @@ Ultra-fast MCP server written in Rust for performance testing and benchmarking. 
   - `convert_time` - Converts a time between IANA timezones
   - `schema_error` / `schema_success` - Output-schema validation fixtures
   - `get_stats` - Returns server statistics
+  - `verify-protocol` - Reports the MCP protocol version active for the current request
 
 ## Quick Start
 
 ```bash
-# Build and run (legacy 2025-11-25 only)
+# Build and run
 make run
 
 # Or release build for benchmarking
 make run-release
-
-# Also serve the modern 2026-07-28 revision
-cargo run -- --protocol 2026-07-28
-
-# Reject version fallback during initialize (strict negotiation)
-cargo run -- --protocol 2026-07-28 --strict
 ```
 
 Server starts at `http://localhost:9080/mcp`
@@ -49,81 +44,84 @@ make test-echo
 make test-time
 ```
 
-Or with curl:
+Or with curl, legacy era (`2025-11-25`): initialize a session, then send
+requests with the `mcp-session-id` header. Session-mode POST responses are
+`text/event-stream` (SSE); the JSON-RPC message rides in the `data:` line.
 
 ```bash
-# Initialize session
-SESSION_RESPONSE=$(curl -s -X POST http://localhost:9080/mcp \
+# Initialize session (response is SSE; session id comes back in a header)
+curl -i -X POST http://localhost:9080/mcp \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}')
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
 
-# Extract session ID from response header (if using httpie or similar)
-# Or parse from mcp-session-id header
-
-# List tools
+# Call echo tool (substitute the mcp-session-id from the initialize response)
 curl -X POST http://localhost:9080/mcp \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'mcp-session-id: <session-id>' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"echo","arguments":{"message":"Hello!"}},"id":2}'
 
-# Call echo tool
-curl -X POST http://localhost:9080/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"echo","arguments":{"message":"Hello!"}},"id":1}'
-
-# Call get_system_time tool
-curl -X POST http://localhost:9080/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_system_time","arguments":{"timezone":"America/New_York"}},"id":1}'
+# Terminate the session
+curl -X DELETE http://localhost:9080/mcp -H 'mcp-session-id: <session-id>'
 ```
 
 ### Modern Protocol (2026-07-28)
 
-Start the server with `--protocol 2026-07-28` and skip the handshake entirely —
-modern requests are stateless and carry their protocol version in
-`params._meta` (plus the `MCP-Protocol-Version` header):
+Modern requests are stateless: no handshake, no session. The protocol version
+travels in `params._meta` plus the `MCP-Protocol-Version` header (the two must
+agree), and every request must also mirror its method in the `Mcp-Method`
+header — and its tool/prompt name in `Mcp-Name` for named methods — per the
+2026-07-28 standard-headers rule (SEP-2243). Responses are plain
+`application/json`.
 
 ```bash
 # Discover supported versions and capabilities (no session needed)
 curl -X POST http://localhost:9080/mcp \
   -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
   -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
   -d '{"jsonrpc":"2.0","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":1}'
 
 # Call a tool directly - no initialize, no session
 curl -X POST http://localhost:9080/mcp \
   -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
   -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' \
+  -H 'Mcp-Name: echo' \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"echo","arguments":{"message":"Hello!"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":2}'
 ```
 
 A request for an unsupported version is rejected with HTTP 400 and an
-`UnsupportedProtocolVersionError` (`-32022`) whose `data.supported` lists the
-versions the server speaks.
+`UnsupportedProtocolVersionError` (`-32022`) whose `data.supported` lists
+exactly the two served eras (`2025-11-25`, `2026-07-28`). A mismatching
+`MCP-Protocol-Version` header is rejected with `HeaderMismatch` (`-32020`).
 
+### verify-protocol
 
-### SSE Streaming Transport
+The `verify-protocol` tool reports which era served the current request. It
+returns both text content and structured content:
 
-The server supports Server-Sent Events (SSE) for streaming MCP protocol messages. Per the MCP SSE specification, clients connect to the SSE endpoint first to receive the POST endpoint URL, then initialize the session:
+- Modern (stateless) requests: the version comes from the request's own
+  `_meta` → `{"protocolVersion": "2026-07-28", "transport": "stateless"}`
+- Legacy (session) requests: the version is the one negotiated at `initialize`
+  → `{"protocolVersion": "2025-11-25", "transport": "session"}`
 
-```bash
-# Step 1: Connect to SSE endpoint (no session required)
-curl -N http://localhost:9080/sse
+### SSE Streaming
 
-# Expected output:
-# event: endpoint
-# data: /mcp
-#
-# : (keep-alive comments every 15 seconds)
+The `/mcp` endpoint itself speaks SSE — there is no separate `/sse` endpoint:
 
-# Step 2: Initialize session via the endpoint from SSE
-curl -X POST http://localhost:9080/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
-
-# Response includes mcp-session-id header for subsequent requests
-```
-
-The SSE endpoint immediately sends an "endpoint" event with the POST endpoint URL (`/mcp`), then maintains the connection with periodic keep-alive comments.
+- Legacy session POST responses (including `initialize`) are SSE streams
+  carrying the JSON-RPC response, so the server can interleave progress and
+  other notifications with the result.
+- `GET /mcp` with `Accept: text/event-stream` and a valid `mcp-session-id`
+  opens a standalone stream for server-initiated messages; `Last-Event-ID`
+  resumes a broken stream.
+- Modern stateless requests return plain `application/json` responses (the
+  server is configured with `json_response`), falling back to SSE only if a
+  handler emits intermediate messages.
 
 ## Benchmarking
 
@@ -205,41 +203,15 @@ make docker-run
 | `/api/echo` | POST | Echo `{"message":"..."}` - pure performance test |
 | `/api/time` | GET | Get time, optional `?tz=America/New_York` |
 | `/health` | GET | Health check |
-| `/version` | GET | Version info, supported MCP protocol versions, strict mode |
+| `/version` | GET | Version info and supported MCP protocol versions |
 
 ### MCP Protocol
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/mcp` | POST | MCP JSON-RPC. Legacy (`2025-11-25`): `initialize` handshake + `mcp-session-id` sessions. Modern (`2026-07-28`, if enabled): stateless requests with version in `params._meta`, including `server/discover` |
+| `/mcp` | POST | MCP JSON-RPC. Legacy (`2025-11-25`): `initialize` handshake + `mcp-session-id` sessions, SSE responses. Modern (`2026-07-28`): stateless requests with version in `params._meta` + `MCP-Protocol-Version`/`Mcp-Method` headers, JSON responses, including `server/discover` |
+| `/mcp` | GET | Open a standalone SSE stream for a legacy session (resume with `Last-Event-ID`) |
 | `/mcp` | DELETE | Terminate a legacy session |
-| `/sse` | GET | Server-Sent Events streaming transport |
-
-## Command-Line Flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--protocol <VERSION>` | `2025-11-25` only | Also serve the given MCP protocol revision. Supported: `2025-11-25`, `2026-07-28`. May be repeated. |
-| `--strict` | off | Serve exactly the revisions named with `--protocol` and reject any non-conformant interaction — no fallback, and no `initialize` handshake at all unless `2025-11-25` was explicitly enabled. |
-
-Without arguments the server speaks only the legacy `2025-11-25` revision
-(`initialize` handshake + sessions). With `--protocol 2026-07-28` it becomes
-dual-era: legacy `initialize` traffic is served as before, and requests that
-carry `io.modelcontextprotocol/protocolVersion` in `params._meta` are served
-statelessly per the modern revision, including the mandatory `server/discover`
-method. Unsupported modern versions are rejected with HTTP 400 and an
-`UnsupportedProtocolVersionError` (`-32022`) listing the supported versions;
-a mismatching `MCP-Protocol-Version` header is rejected with `HeaderMismatch`
-(`-32020`).
-
-`--strict` makes the served set exact. `--protocol 2026-07-28 --strict` runs a
-pure `2026-07-28` server: every `initialize` call — including ones naming
-`2025-11-25` — is rejected with an `UnsupportedProtocolVersionError` (`-32022`)
-whose `data.supported`
-lists only the configured revisions, and `server/discover` advertises only
-`2026-07-28`. To run a strict server that still accepts the legacy handshake,
-enable both revisions explicitly:
-`--protocol 2025-11-25 --protocol 2026-07-28 --strict`.
 
 ## Environment Variables
 
