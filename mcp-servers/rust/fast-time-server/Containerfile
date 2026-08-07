@@ -13,15 +13,16 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # =============================================================================
-# Build stage - Rust compilation against the full Cargo workspace
+# Build stage - Rust compilation on the same pinned UBI 10 base as the
+# runtime image (UBI 10.2 AppStream ships Rust 1.92, above the crate's 1.88
+# rust-version floor; no nightly toolchain required)
 # =============================================================================
-FROM docker.io/rustlang/rust:nightly-slim AS builder
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1777462752 AS builder
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+RUN microdnf install -y cargo rust gcc \
+    && microdnf clean all
 
 # Copy the entire fast-time-server directory (build context is this directory)
 COPY . ./
@@ -29,7 +30,7 @@ COPY . ./
 RUN cargo build --release
 
 # =============================================================================
-# Runtime stage - Minimal Debian image with just the compiled binary
+# Runtime stage - Same pinned UBI 10 minimal image with just the binary
 # =============================================================================
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1777462752
 
@@ -49,6 +50,10 @@ EXPOSE 9080
 
 ENV BIND_ADDRESS=0.0.0.0:9080
 ENV RUST_LOG=info
+# Serve both the legacy (2025-11-25) and modern (2026-07-28) MCP revisions
+# out of the box; operators can restrict the image to a single era with
+# MCP_PROTOCOL_MODE=legacy or =modern.
+ENV MCP_PROTOCOL_MODE=dual
 
 LABEL org.opencontainers.image.title="fast-time-server"
 LABEL org.opencontainers.image.description="Ultra-fast MCP server in Rust for performance testing"
