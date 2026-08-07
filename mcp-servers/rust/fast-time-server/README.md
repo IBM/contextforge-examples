@@ -8,7 +8,7 @@ Ultra-fast MCP server written in Rust for performance testing and benchmarking. 
 
 - **Blazing fast**: Native Rust performance with zero-copy where possible
 - **Streamable HTTP**: MCP Streamable HTTP transport served by the SDK's `StreamableHttpService`
-- **Dual-era MCP**: Legacy `2025-11-25` (initialize handshake + `mcp-session-id` sessions) and modern `2026-07-28` (stateless, per-request `_meta`) are served simultaneously on the same `/mcp` endpoint — no flags, no modes
+- **Dual-era MCP**: Legacy `2025-11-25` (initialize handshake + `mcp-session-id` sessions) and modern `2026-07-28` (stateless, per-request `_meta`) are served simultaneously on the same `/mcp` endpoint; `MCP_PROTOCOL_MODE=legacy|modern` restricts the server to a single era
 - **Minimal overhead**: No auth, no database, pure compute
 - **Tools**:
   - `echo` - Echoes back the provided message (with optional delay/jitter)
@@ -215,10 +215,25 @@ make docker-run
 
 ## Environment Variables
 
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BIND_ADDRESS` | `0.0.0.0:9080` | Address to bind to |
 | `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
+| `MCP_PROTOCOL_MODE` | `dual` | MCP era(s) to serve: `legacy` (2025-11-25 only), `modern` (2026-07-28 only), or `dual` (both). Any other value fails startup with an error listing the accepted values |
+
+The `MCP_PROTOCOL_MODE` variable selects which MCP revision(s) the server
+speaks, without rebuilding or editing the entrypoint:
+
+| `MCP_PROTOCOL_MODE` | Serves | Behavior |
+|---------------------|--------|----------|
+| `legacy` | 2025-11-25 only | `initialize` handshake + sessions; modern stateless requests are rejected with `-32022` |
+| `modern` | 2026-07-28 only | Stateless per-request era; `initialize` proposing 2025-11-25 is rejected with `-32022` |
+| `dual` (default) | both | Legacy and modern served simultaneously, as documented above |
+
+The published container image sets `ENV MCP_PROTOCOL_MODE=dual`, so it serves
+both eras out of the box; operators can restrict it with
+`docker run -e MCP_PROTOCOL_MODE=modern ...`.
 
 ## Supported Timezones
 
