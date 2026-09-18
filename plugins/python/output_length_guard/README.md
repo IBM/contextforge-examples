@@ -42,11 +42,16 @@ See [Configuration Modes](#configuration-modes) section below for detailed examp
 
 ## Examples
 
+> **Note — import path:** The `kind` values below use the import path relative to this
+> repository's layout (`plugins.python.output_length_guard.output_length_guard`).
+> If you are running this plugin inside `mcp-context-forge` or another host, adjust
+> the dotted path to match where the module is installed on that system.
+
 ### Example 1: Character-Based Mode (Default)
 
 ```yaml
 - name: "OutputLengthGuardPlugin"
-  kind: "plugins.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
+  kind: "plugins.python.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
   hooks: ["tool_post_invoke"]
   mode: "permissive"
   priority: 160
@@ -61,7 +66,7 @@ See [Configuration Modes](#configuration-modes) section below for detailed examp
 
 ```yaml
 - name: "OutputLengthGuardPlugin"
-  kind: "plugins.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
+  kind: "plugins.python.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
   hooks: ["tool_post_invoke"]
   mode: "permissive"
   priority: 160
@@ -77,7 +82,7 @@ See [Configuration Modes](#configuration-modes) section below for detailed examp
 
 ```yaml
 - name: "OutputLengthGuardPlugin"
-  kind: "plugins.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
+  kind: "plugins.python.output_length_guard.output_length_guard.OutputLengthGuardPlugin"
   hooks: ["tool_post_invoke"]
   mode: "permissive"
   priority: 160
