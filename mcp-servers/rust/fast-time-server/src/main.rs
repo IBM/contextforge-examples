@@ -318,6 +318,16 @@ struct VerifyProtocolResult {
     transport: String,
 }
 
+/// Reflected HTTP headers for `whoami`: a lowercased name → value map with
+/// `authorization` always present (`null` when absent). A typed newtype
+/// instead of `serde_json::Value` so the SDK's auto-generated `outputSchema`
+/// is a spec-valid object schema (`{"type":"object","additionalProperties":…}`)
+/// — schemars renders `Value` as a typeless schema, which fails the MCP
+/// conformance `tools-list` check.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(transparent)]
+struct WhoamiResult(std::collections::BTreeMap<String, Option<String>>);
+
 /// Resolve the protocol version active for one request: the per-request
 /// `_meta` version wins (modern, stateless era); otherwise fall back to the
 /// version the session negotiated at `initialize` (legacy era).
@@ -507,12 +517,9 @@ impl FastTimeServer {
     #[tool(
         description = "Reflect the HTTP headers received with this tool call as a lowercased JSON map, for header-propagation testing. The authorization key is null when the header is absent."
     )]
-    fn whoami(
-        &self,
-        context: RequestContext<RoleServer>,
-    ) -> Result<Json<serde_json::Value>, McpError> {
+    fn whoami(&self, context: RequestContext<RoleServer>) -> Result<Json<WhoamiResult>, McpError> {
         self.state.request_count.fetch_add(1, Ordering::Relaxed);
-        let mut headers = serde_json::Map::new();
+        let mut headers = std::collections::BTreeMap::new();
         if let Some(parts) = context.extensions.get::<axum::http::request::Parts>() {
             for (name, value) in &parts.headers {
                 let value = value
@@ -523,13 +530,11 @@ impl FastTimeServer {
                 // for repeated headers.
                 headers
                     .entry(name.as_str().to_lowercase())
-                    .or_insert(serde_json::Value::String(value));
+                    .or_insert(Some(value));
             }
         }
-        headers
-            .entry("authorization".to_string())
-            .or_insert(serde_json::Value::Null);
-        Ok(Json(serde_json::Value::Object(headers)))
+        headers.entry("authorization".to_string()).or_insert(None);
+        Ok(Json(WhoamiResult(headers)))
     }
 }
 
