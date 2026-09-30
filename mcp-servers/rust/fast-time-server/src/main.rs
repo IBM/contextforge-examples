@@ -11,6 +11,7 @@
 // - schema_error / schema_success: Output-schema validation fixtures
 // - get_stats: Returns server statistics
 // - verify-protocol: Reports the MCP protocol version of the current request
+// - whoami: Reflects the HTTP headers of the tool-call request
 //
 // Transport: Streamable HTTP (no auth) via the official MCP Rust SDK (rmcp).
 // Dual-era by default: legacy 2025-11-25 (initialize handshake + sessions)
@@ -317,6 +318,16 @@ struct VerifyProtocolResult {
     transport: String,
 }
 
+/// Reflected HTTP headers for `whoami`: a lowercased name → value map with
+/// `authorization` always present (`null` when absent). A typed newtype
+/// instead of `serde_json::Value` so the SDK's auto-generated `outputSchema`
+/// is a spec-valid object schema (`{"type":"object","additionalProperties":…}`)
+/// — schemars renders `Value` as a typeless schema, which fails the MCP
+/// conformance `tools-list` check.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(transparent)]
+struct WhoamiResult(std::collections::BTreeMap<String, Option<String>>);
+
 /// Resolve the protocol version active for one request: the per-request
 /// `_meta` version wins (modern, stateless era); otherwise fall back to the
 /// version the session negotiated at `initialize` (legacy era).
@@ -495,6 +506,35 @@ impl FastTimeServer {
             context.meta.protocol_version(),
             negotiated,
         )))
+    }
+
+    /// Reflect the HTTP headers of the tool-call request so header-affecting
+    /// gateway plugins (e.g. Vault `tool_pre_invoke`) can assert what the
+    /// upstream actually received. Names are normalized to lowercase; the
+    /// `authorization` key is always present so callers can distinguish
+    /// "absent" from "not reflected". Values go only into the tool response —
+    /// they are never logged.
+    #[tool(
+        description = "Reflect the HTTP headers received with this tool call as a lowercased JSON map, for header-propagation testing. The authorization key is null when the header is absent."
+    )]
+    fn whoami(&self, context: RequestContext<RoleServer>) -> Result<Json<WhoamiResult>, McpError> {
+        self.state.request_count.fetch_add(1, Ordering::Relaxed);
+        let mut headers = std::collections::BTreeMap::new();
+        if let Some(parts) = context.extensions.get::<axum::http::request::Parts>() {
+            for (name, value) in &parts.headers {
+                let value = value
+                    .to_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|_| String::from_utf8_lossy(value.as_bytes()).into_owned());
+                // http::HeaderName is already lowercase; first occurrence wins
+                // for repeated headers.
+                headers
+                    .entry(name.as_str().to_lowercase())
+                    .or_insert(Some(value));
+            }
+        }
+        headers.entry("authorization".to_string()).or_insert(None);
+        Ok(Json(WhoamiResult(headers)))
     }
 }
 
@@ -1060,7 +1100,7 @@ mod tests {
         let response = oneshot(&router, list).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body = parse_sse_json(&response_text(response).await);
-        assert_eq!(body["result"]["tools"].as_array().map(Vec::len), Some(8));
+        assert_eq!(body["result"]["tools"].as_array().map(Vec::len), Some(9));
 
         let response = oneshot(
             &router,
@@ -1280,6 +1320,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_modern_whoami_reflects_headers_lowercased() {
+        let mut request = modern_request("tools/call", MCP_PROTOCOL_VERSION_MODERN, 40);
+        request["params"]["name"] = json!("whoami");
+        request["params"]["arguments"] = json!({});
+        let mut http = mcp_post(request);
+        let headers = http.headers_mut();
+        headers.insert(
+            PROTOCOL_VERSION_HEADER,
+            HeaderValue::from_static(MCP_PROTOCOL_VERSION_MODERN),
+        );
+        headers.insert("mcp-method", HeaderValue::from_static("tools/call"));
+        headers.insert("mcp-name", HeaderValue::from_static("whoami"));
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer test-token"),
+        );
+        headers.insert("X-Vault-Tokens", HeaderValue::from_static("secret-token"));
+
+        let response = oneshot(&build_router(ProtocolMode::Dual), http).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_str(&response_text(response).await).expect("response should be JSON");
+        let result = &body["result"];
+        assert_eq!(result["isError"], false);
+        let reflected = &result["structuredContent"];
+        assert_eq!(reflected["authorization"], "Bearer test-token");
+        assert_eq!(reflected["x-vault-tokens"], "secret-token");
+        assert_eq!(reflected["mcp-method"], "tools/call");
+        let text: serde_json::Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().expect("text content"))
+                .expect("text content should mirror the structured payload");
+        assert_eq!(text["authorization"], "Bearer test-token");
+    }
+
+    #[tokio::test]
+    async fn test_legacy_whoami_reports_null_authorization_when_absent() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+        let body = legacy_tool_call(&router, &session_id, "whoami", json!({}), 41).await;
+        let result = &body["result"];
+        assert_eq!(result["isError"], false);
+        let reflected = &result["structuredContent"];
+        assert!(reflected["authorization"].is_null());
+        assert_eq!(reflected["mcp-session-id"], session_id.as_str());
+        assert_eq!(reflected["content-type"], "application/json");
+    }
+
+    #[tokio::test]
     async fn test_modern_tools_call_needs_no_session() {
         let (status, body) = modern_tool_call(
             &build_router(ProtocolMode::Dual),
@@ -1302,7 +1390,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         let tools = body["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 9);
 
         let echo = tools.iter().find(|tool| tool["name"] == "echo").unwrap();
         assert_eq!(echo["description"], "Echo back the provided message.");
