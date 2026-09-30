@@ -5,7 +5,7 @@
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::convert::Infallible;
 use std::env;
 use std::net::SocketAddr;
@@ -59,6 +59,9 @@ struct StoredTask {
     context_id: String,
     input_text: String,
     output_text: String,
+    /// Request headers received with the message that created this task,
+    /// reflected back so E2E tests can assert gateway header forwarding.
+    received_headers: BTreeMap<String, String>,
     state: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -94,6 +97,24 @@ struct JsonRpcError {
 
 fn jsonrpc_version() -> String {
     "2.0".to_string()
+}
+/// Reflect every received request header with names normalized to
+/// lowercase (`http::HeaderName` is lowercase by construction, so
+/// `as_str()` needs no further normalization) into a JSON-friendly map.
+/// Lets E2E tests assert exactly which headers the gateway forwarded
+/// upstream -- e.g. a plugin-injected `Authorization` is present and the
+/// client's `X-Vault-Tokens` was stripped. Duplicate header names collapse
+/// to the last value seen, matching the reference `echo_a2a.py` fixture.
+fn received_headers_map(headers: &HeaderMap) -> BTreeMap<String, String> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
 }
 
 #[tokio::main]
@@ -183,18 +204,28 @@ async fn extended_agent_card_handler(State(state): State<AppState>) -> Json<Valu
     ))
 }
 
-async fn jsonrpc_handler(State(state): State<AppState>, body: Bytes) -> Response {
+async fn jsonrpc_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let received_headers = received_headers_map(&headers);
     if let Ok(parsed) = serde_json::from_slice::<Value>(&body) {
         if let Some(method) = parsed.get("method").and_then(Value::as_str) {
             if matches!(method, "SendStreamingMessage" | "message/stream") {
-                return streaming_jsonrpc_response(state.clone(), parsed).into_response();
+                return streaming_jsonrpc_response(state.clone(), parsed, received_headers)
+                    .into_response();
             }
             if matches!(method, "SubscribeToTask" | "tasks/resubscribe") {
                 return streaming_subscribe_response(state.clone(), parsed).into_response();
             }
         }
     }
-    (StatusCode::OK, Json(handle_jsonrpc_body(&state, &body))).into_response()
+    (
+        StatusCode::OK,
+        Json(handle_jsonrpc_body(&state, &body, &received_headers)),
+    )
+        .into_response()
 }
 
 /// Test-driving directive for streaming dispatch. Tests embed
@@ -254,6 +285,7 @@ fn parse_stream_directive(text: &str) -> StreamDirective {
 fn streaming_jsonrpc_response(
     state: AppState,
     parsed: Value,
+    received_headers: BTreeMap<String, String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let id = parsed.get("id").cloned().unwrap_or(Value::Null);
     let method = parsed
@@ -277,6 +309,7 @@ fn streaming_jsonrpc_response(
         context_id: Uuid::new_v4().to_string(),
         input_text: text,
         output_text,
+        received_headers,
         state: "completed".to_string(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -375,7 +408,11 @@ fn streaming_subscribe_response(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-fn handle_jsonrpc_body(state: &AppState, body: &[u8]) -> JsonRpcResponse {
+fn handle_jsonrpc_body(
+    state: &AppState,
+    body: &[u8],
+    received_headers: &BTreeMap<String, String>,
+) -> JsonRpcResponse {
     // JSON-RPC 2.0 § 5.1 reserves -32700 specifically for "invalid JSON".
     // Well-formed JSON with a malformed envelope is -32600 "Invalid Request",
     // and that includes the common case of `method` being missing.
@@ -394,15 +431,19 @@ fn handle_jsonrpc_body(state: &AppState, body: &[u8]) -> JsonRpcResponse {
     }
 
     match serde_json::from_value::<JsonRpcRequest>(parsed) {
-        Ok(req) => dispatch_jsonrpc_request(state, &req),
+        Ok(req) => dispatch_jsonrpc_request(state, &req, received_headers),
         Err(_) => rpc_error_with_id(id, -32600, "invalid JSON-RPC envelope"),
     }
 }
 
-fn dispatch_jsonrpc_request(state: &AppState, req: &JsonRpcRequest) -> JsonRpcResponse {
+fn dispatch_jsonrpc_request(
+    state: &AppState,
+    req: &JsonRpcRequest,
+    received_headers: &BTreeMap<String, String>,
+) -> JsonRpcResponse {
     match req.method.as_str() {
         "SendMessage" | "message/send" | "SendStreamingMessage" | "message/stream" => {
-            match handle_send_message(state, &req.method, &req.params) {
+            match handle_send_message(state, &req.method, &req.params, received_headers) {
                 Ok(result) => rpc_result(req, result),
                 Err(err) => rpc_error(req, -32602, &err),
             }
@@ -445,17 +486,27 @@ fn dispatch_jsonrpc_request(state: &AppState, req: &JsonRpcRequest) -> JsonRpcRe
     }
 }
 
-async fn run_handler(State(state): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
+async fn run_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Json<Value> {
     let input = extract_text(&body).unwrap_or_default();
     Json(json!({
         "response": echo_text(&state.config, &input),
         "status": "success",
         "agent_name": state.config.name,
+        "received_headers": received_headers_map(&headers),
         "timestamp": Utc::now().to_rfc3339()
     }))
 }
 
-fn handle_send_message(state: &AppState, method: &str, params: &Value) -> Result<Value, String> {
+fn handle_send_message(
+    state: &AppState,
+    method: &str,
+    params: &Value,
+    received_headers: &BTreeMap<String, String>,
+) -> Result<Value, String> {
     let text = extract_text(params).ok_or_else(|| "message text not found".to_string())?;
     let output = echo_text(&state.config, &text);
     let task = StoredTask {
@@ -463,6 +514,7 @@ fn handle_send_message(state: &AppState, method: &str, params: &Value) -> Result
         context_id: Uuid::new_v4().to_string(),
         input_text: text,
         output_text: output,
+        received_headers: received_headers.clone(),
         state: "completed".to_string(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -544,6 +596,11 @@ fn task_to_value(task: &StoredTask, use_v1: bool) -> Value {
         },
         "artifacts": [build_artifact(&format!("{}-artifact", task.id), &task.output_text, use_v1)]
     });
+    if !task.received_headers.is_empty() {
+        // Snake_case key matches the reference `echo_a2a.py` fixture that
+        // downstream vault-plugin E2E tests search for recursively.
+        value["metadata"] = json!({ "received_headers": task.received_headers });
+    }
     if !use_v1 {
         value["kind"] = json!("task");
         value["createdAt"] = json!(task.created_at.to_rfc3339());
@@ -849,6 +906,7 @@ mod tests {
             &state,
             "SendMessage",
             &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &BTreeMap::new(),
         )
         .unwrap();
         let id = result["task"]["id"].as_str().unwrap();
@@ -866,6 +924,7 @@ mod tests {
             &state,
             "SendMessage",
             &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &BTreeMap::new(),
         )
         .unwrap();
         let id = result["task"]["id"].as_str().unwrap();
@@ -882,7 +941,7 @@ mod tests {
             method: "Nope".to_string(),
             params: Value::Null,
         };
-        let response = dispatch_jsonrpc_request(&state, &req);
+        let response = dispatch_jsonrpc_request(&state, &req, &BTreeMap::new());
         assert_eq!(response.error.unwrap().code, -32601);
     }
 
@@ -895,7 +954,7 @@ mod tests {
             method: "GetTask".to_string(),
             params: json!({"id": "missing"}),
         };
-        let response = dispatch_jsonrpc_request(&state, &req);
+        let response = dispatch_jsonrpc_request(&state, &req, &BTreeMap::new());
         let error = response.error.unwrap();
         assert_eq!(error.code, -32001);
         assert_eq!(error.message, "task not found");
@@ -910,7 +969,7 @@ mod tests {
             method: "CancelTask".to_string(),
             params: json!({"id": "missing"}),
         };
-        let response = dispatch_jsonrpc_request(&state, &req);
+        let response = dispatch_jsonrpc_request(&state, &req, &BTreeMap::new());
         let error = response.error.unwrap();
         assert_eq!(error.code, -32001);
         assert_eq!(error.message, "task not found");
@@ -935,6 +994,7 @@ mod tests {
                     context_id: format!("context-{index}"),
                     input_text: "input".to_string(),
                     output_text: "output".to_string(),
+                    received_headers: BTreeMap::new(),
                     state: "completed".to_string(),
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
@@ -958,7 +1018,11 @@ mod tests {
     #[test]
     fn malformed_json_returns_parse_error_envelope() {
         let state = state();
-        let response = handle_jsonrpc_body(&state, br#"{"jsonrpc":"2.0","method":"SendMessage""#);
+        let response = handle_jsonrpc_body(
+            &state,
+            br#"{"jsonrpc":"2.0","method":"SendMessage""#,
+            &BTreeMap::new(),
+        );
         let error = response.error.unwrap();
         assert_eq!(error.code, -32700);
         assert_eq!(response.id, Value::Null);
@@ -971,6 +1035,7 @@ mod tests {
             &state,
             "SendMessage",
             &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &BTreeMap::new(),
         )
         .unwrap();
 
@@ -1010,6 +1075,7 @@ mod tests {
             &state,
             "message/send",
             &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &BTreeMap::new(),
         )
         .unwrap();
 
@@ -1070,8 +1136,11 @@ mod tests {
     #[test]
     fn missing_method_returns_invalid_request_envelope() {
         let state = state();
-        let response =
-            handle_jsonrpc_body(&state, br#"{"jsonrpc":"2.0","id":"req-1","params":{}}"#);
+        let response = handle_jsonrpc_body(
+            &state,
+            br#"{"jsonrpc":"2.0","id":"req-1","params":{}}"#,
+            &BTreeMap::new(),
+        );
         let error = response.error.unwrap();
         assert_eq!(
             error.code, -32600,
@@ -1101,5 +1170,117 @@ mod tests {
         };
         let response = serde_json::to_value(rpc_error(&req, -32601, r#"bad "message""#)).unwrap();
         assert_eq!(response["error"]["message"], r#"bad "message""#);
+    }
+
+    #[test]
+    fn received_headers_map_normalizes_names_to_lowercase() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer vault-token".parse().unwrap(),
+        );
+        headers.insert("X-Custom-Header", "custom-value".parse().unwrap());
+
+        let map = received_headers_map(&headers);
+        assert_eq!(map["authorization"], "Bearer vault-token");
+        assert_eq!(map["x-custom-header"], "custom-value");
+        assert!(
+            map.keys().all(|name| name == &name.to_lowercase()),
+            "reflected header names must be normalized to lowercase"
+        );
+    }
+
+    #[test]
+    fn send_message_reflects_received_headers_in_task_metadata() {
+        let state = state();
+        let headers = BTreeMap::from([
+            (
+                "authorization".to_string(),
+                "Bearer vault-token".to_string(),
+            ),
+            ("x-custom-header".to_string(), "custom-value".to_string()),
+        ]);
+        let result = handle_send_message(
+            &state,
+            "SendMessage",
+            &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &headers,
+        )
+        .unwrap();
+
+        let received = &result["task"]["metadata"]["received_headers"];
+        assert_eq!(received["authorization"], "Bearer vault-token");
+        assert_eq!(received["x-custom-header"], "custom-value");
+        assert!(
+            received.get("x-vault-tokens").is_none(),
+            "headers the gateway stripped must stay absent from the reflection"
+        );
+
+        let id = result["task"]["id"].as_str().unwrap();
+        assert_eq!(
+            get_task(&state, id).unwrap().received_headers["authorization"],
+            "Bearer vault-token",
+            "stored task must retain the reflected headers for GetTask"
+        );
+    }
+
+    #[test]
+    fn legacy_send_message_reflects_received_headers_in_task_metadata() {
+        let state = state();
+        let headers = BTreeMap::from([(
+            "authorization".to_string(),
+            "Bearer vault-token".to_string(),
+        )]);
+        let result = handle_send_message(
+            &state,
+            "message/send",
+            &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &headers,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result["metadata"]["received_headers"]["authorization"],
+            "Bearer vault-token"
+        );
+    }
+
+    // Sse::keep_alive arms a Tokio timer, so this test needs a runtime.
+    #[tokio::test]
+    async fn streaming_response_stores_received_headers_on_task() {
+        let state = state();
+        let headers = BTreeMap::from([(
+            "authorization".to_string(),
+            "Bearer vault-token".to_string(),
+        )]);
+        let parsed = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "SendStreamingMessage",
+            "params": {"message": {"parts": [{"text": "hello"}]}}
+        });
+        // Task is stored before the SSE stream is consumed, so the store
+        // assertion does not need to drain the stream.
+        let _sse = streaming_jsonrpc_response(state.clone(), parsed, headers);
+
+        let tasks = list_tasks(&state, true);
+        let received = &tasks["tasks"][0]["metadata"]["received_headers"];
+        assert_eq!(received["authorization"], "Bearer vault-token");
+    }
+
+    #[test]
+    fn task_without_headers_omits_metadata() {
+        let state = state();
+        let result = handle_send_message(
+            &state,
+            "SendMessage",
+            &json!({"message": {"parts": [{"text": "hello"}]}}),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(
+            result["task"].get("metadata").is_none(),
+            "tasks created without request headers must not emit an empty metadata block"
+        );
     }
 }

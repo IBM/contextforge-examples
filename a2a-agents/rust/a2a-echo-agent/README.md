@@ -29,6 +29,27 @@ validation.
 
 Tasks complete immediately and are stored in memory for follow-up lookup.
 
+## Received header reflection
+
+Echo responses include a `received_headers` map of every HTTP request header
+the agent received, with names normalized to lowercase:
+
+- JSON-RPC `SendMessage` / `message/send` (and streaming chunks):
+  `result.task.metadata.received_headers` (protocol 1.0.0) or
+  `result.metadata.received_headers` (legacy 0.3.0).
+- `POST /run`: top-level `received_headers` field.
+
+This mirrors the `plugins/vault/echo_a2a.py` reference fixture and exists so
+end-to-end tests can assert exactly which headers a gateway forwarded
+upstream — for example that a plugin injected `Authorization: Bearer …` and
+that a client's `X-Vault-Tokens` header was stripped.
+
+> [!WARNING]
+> The agent reflects credentials (`Authorization` and any other header) back
+> to the caller **by design**. It is a test fixture, not a production agent —
+> never expose it to untrusted clients.
+
+
 ## Configuration
 
 | Variable | Default | Description |
