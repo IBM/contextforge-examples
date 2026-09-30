@@ -18,6 +18,7 @@ Ultra-fast MCP server written in Rust for performance testing and benchmarking. 
   - `schema_error` / `schema_success` - Output-schema validation fixtures
   - `get_stats` - Returns server statistics
   - `verify-protocol` - Reports the MCP protocol version active for the current request
+  - `whoami` - Reflects the HTTP headers received with the tool call as a lowercased JSON map
 
 ## Quick Start
 
@@ -108,6 +109,24 @@ returns both text content and structured content:
   `_meta` → `{"protocolVersion": "2026-07-28", "transport": "stateless"}`
 - Legacy (session) requests: the version is the one negotiated at `initialize`
   → `{"protocolVersion": "2025-11-25", "transport": "session"}`
+
+### whoami
+
+The `whoami` tool reflects the HTTP headers of the tool-call request so
+header-affecting gateway plugins (e.g. Vault `tool_pre_invoke`) can assert
+what the upstream actually received. It returns both text content and
+structured content: a JSON object mapping each received header name
+(lowercased) to its value. The `authorization` key is always present — `null`
+when the header was absent — and header values appear only in the tool
+response, never in server logs. Example:
+
+```json
+{
+  "authorization": "Bearer <vault-token>",
+  "content-type": "application/json",
+  "mcp-session-id": "…"
+}
+```
 
 ### SSE Streaming
 
