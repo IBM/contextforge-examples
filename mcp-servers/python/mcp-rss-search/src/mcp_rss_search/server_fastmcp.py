@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp-rss-search/src/mcp_rss_search/server_fastmcp.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -16,9 +15,8 @@ import logging
 import re
 import socket
 import sys
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Any
+from collections import Counter
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import feedparser
@@ -34,6 +32,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)],
 )
 logger = logging.getLogger(__name__)
+
+SIMILARITY_SEARCH_UNAVAILABLE = (
+    "Similarity search not available. Install with: pip install mcp-rss-search[similarity]"
+)
 
 # Create FastMCP server instance
 mcp = FastMCP(name="mcp-rss-search", version="1.0.0")
@@ -100,7 +102,7 @@ def _resolve_and_validate(url: str) -> tuple[str, str, int | None]:
     except socket.gaierror as exc:
         raise ValueError(f"Could not resolve host {host!r}: {exc}") from exc
 
-    resolved = [info[4][0] for info in infos]
+    resolved = [str(info[4][0]) for info in infos]
     for ip in resolved:
         if _is_blocked_ip(ip):
             raise ValueError(f"Blocked non-public address for {host!r}: {ip}")
@@ -128,7 +130,7 @@ def _pin_url(url: str, pinned_ip: str) -> str:
 class RSSParser:
     """Advanced RSS feed parser with search and analysis capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the RSS parser."""
         self.cache: dict[str, Any] = {}
 
@@ -147,7 +149,7 @@ class RSSParser:
             # Check cache
             if use_cache and url in self.cache:
                 logger.info(f"Using cached feed for {url}")
-                return self.cache[url]
+                return cast(dict[str, Any], self.cache[url])
 
             # Fetch feed
             logger.info(f"Fetching RSS feed from {url}")
@@ -440,7 +442,7 @@ class RSSParser:
             from dateutil import parser
 
             dt = parser.parse(date_str)
-            return dt.isoformat()
+            return str(dt.isoformat())
         except Exception:
             # Return as-is if parsing fails
             return date_str
@@ -609,9 +611,7 @@ class RSSParser:
             },
         }
 
-    def list_unique_values(
-        self, feed_data: dict[str, Any], field: str
-    ) -> dict[str, Any]:
+    def list_unique_values(self, feed_data: dict[str, Any], field: str) -> dict[str, Any]:
         """List unique values for a field with counts."""
         if not feed_data.get("success"):
             return {"success": False, "error": "Invalid feed data"}
@@ -659,16 +659,14 @@ class SimilaritySearchEngine:
         import os
 
         # Get model from env var or parameter or default
-        self.model_name = model_name or os.getenv(
-            "RSS_EMBEDDING_MODEL", "all-MiniLM-L6-v2"
-        )
+        self.model_name = model_name or os.getenv("RSS_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
         self.model = None
         self.available = self._check_availability()
 
     def _check_availability(self) -> bool:
         """Check if sentence-transformers is available."""
         try:
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # noqa: F401
 
             return True
         except ImportError:
@@ -678,7 +676,7 @@ class SimilaritySearchEngine:
             )
             return False
 
-    def _load_model(self, model_name: str | None = None):
+    def _load_model(self, model_name: str | None = None) -> Any:
         """
         Lazy load the embedding model.
 
@@ -743,7 +741,6 @@ class SimilaritySearchEngine:
             return None
 
         try:
-            import numpy as np
 
             embeddings = model.encode(texts, convert_to_numpy=True)
             return embeddings
@@ -795,7 +792,6 @@ class SimilaritySearchEngine:
             return []
 
         try:
-            import numpy as np
 
             # Default fields if not specified
             if fields is None:
@@ -825,7 +821,7 @@ class SimilaritySearchEngine:
                 return []
 
             # Calculate similarities
-            similarities = []
+            similarities: list[dict[str, Any]] = []
             for i, entry_emb in enumerate(entry_embeddings):
                 if not entry_texts[i]:  # Skip empty entries
                     continue
@@ -846,7 +842,7 @@ class SimilaritySearchEngine:
 
     def find_duplicates(
         self, entries: list[dict[str, Any]], similarity_threshold: float = 0.85
-    ) -> list[dict[str, Any]]:
+    ) -> list[list[dict[str, Any]]]:
         """
         Find duplicate or near-duplicate entries using semantic similarity.
 
@@ -861,7 +857,6 @@ class SimilaritySearchEngine:
             return []
 
         try:
-            import numpy as np
 
             # Generate embeddings for all entries
             entry_texts = []
@@ -874,7 +869,7 @@ class SimilaritySearchEngine:
                 return []
 
             # Find duplicates
-            duplicates = []
+            duplicates: list[list[dict[str, Any]]] = []
             processed = set()
 
             for i in range(len(entries)):
@@ -936,9 +931,7 @@ class SimilaritySearchEngine:
             logger.error(f"Error finding related entries: {e}")
             return []
 
-    def cluster_entries(
-        self, entries: list[dict[str, Any]], n_clusters: int = 5
-    ) -> dict[str, Any]:
+    def cluster_entries(self, entries: list[dict[str, Any]], n_clusters: int = 5) -> dict[str, Any]:
         """
         Cluster entries by semantic similarity.
 
@@ -953,7 +946,6 @@ class SimilaritySearchEngine:
             return {"success": False, "error": "Similarity search not available"}
 
         try:
-            import numpy as np
             from sklearn.cluster import KMeans
 
             # Generate embeddings
@@ -974,7 +966,7 @@ class SimilaritySearchEngine:
             cluster_labels = kmeans.fit_predict(embeddings)
 
             # Organize results
-            clusters = {}
+            clusters: dict[str, list[dict[str, Any]]] = {}
             for i, label in enumerate(cluster_labels):
                 label_str = f"cluster_{label}"
                 if label_str not in clusters:
@@ -1017,13 +1009,11 @@ class HybridSearchEngine:
     def _check_bm25_availability(self) -> bool:
         """Check if rank-bm25 is available."""
         try:
-            from rank_bm25 import BM25Okapi
+            from rank_bm25 import BM25Okapi  # noqa: F401
 
             return True
         except ImportError:
-            logger.warning(
-                "rank-bm25 not installed. Hybrid search requires: pip install rank-bm25"
-            )
+            logger.warning("rank-bm25 not installed. Hybrid search requires: pip install rank-bm25")
             return False
 
     def _tokenize(self, text: str) -> list[str]:
@@ -1143,9 +1133,7 @@ class HybridSearchEngine:
         if semantic_score_map:
             max_semantic = max(semantic_score_map.values())
             if max_semantic > 0:
-                semantic_score_map = {
-                    k: v / max_semantic for k, v in semantic_score_map.items()
-                }
+                semantic_score_map = {k: v / max_semantic for k, v in semantic_score_map.items()}
 
         if bm25_scores:
             max_bm25 = max(bm25_scores.values())
@@ -1624,9 +1612,7 @@ async def analyze_feed(
         insights.append("Single-author publication")
 
     if stats.get("media", {}).get("entries_with_media", 0) > 0:
-        media_pct = (
-            stats["media"]["entries_with_media"] / stats["total_entries"] * 100
-        )
+        media_pct = stats["media"]["entries_with_media"] / stats["total_entries"] * 100
         insights.append(f"{media_pct:.1f}% of entries include media content")
 
     if len(stats.get("categories", {}).get("distribution", {})) > 20:
@@ -1685,7 +1671,7 @@ async def similarity_search(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1728,7 +1714,7 @@ async def find_duplicates(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1738,7 +1724,9 @@ async def find_duplicates(
 
     entries = feed_data.get("entries", [])
 
-    duplicates = similarity_engine.find_duplicates(entries, similarity_threshold=similarity_threshold)
+    duplicates = similarity_engine.find_duplicates(
+        entries, similarity_threshold=similarity_threshold
+    )
 
     return {
         "success": True,
@@ -1751,7 +1739,9 @@ async def find_duplicates(
 @mcp.tool(description="Find related entries to a specific entry")
 async def find_related_entries(
     url: str = Field(..., description="RSS feed URL"),
-    entry_index: int = Field(..., ge=0, description="Index of the entry to find related content for"),
+    entry_index: int = Field(
+        ..., ge=0, description="Index of the entry to find related content for"
+    ),
     top_k: int = Field(5, ge=1, le=20, description="Number of related entries to return"),
     use_cache: bool = Field(True, description="Use cached feed if available"),
 ) -> dict[str, Any]:
@@ -1769,7 +1759,7 @@ async def find_related_entries(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1821,7 +1811,7 @@ async def cluster_by_topic(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1857,7 +1847,7 @@ async def search_subtitles_semantic(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1903,7 +1893,7 @@ async def search_summaries_semantic(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -1958,7 +1948,7 @@ async def search_multi_field_semantic(
     if not similarity_engine.available:
         return {
             "success": False,
-            "error": "Similarity search not available. Install with: pip install mcp-rss-search[similarity]",
+            "error": SIMILARITY_SEARCH_UNAVAILABLE,
         }
 
     feed_data = await rss_parser.fetch_feed(url, use_cache)
@@ -2014,7 +2004,7 @@ async def inspect_feed_schema(
 
     # Detect which fields are present
     all_fields = set()
-    field_counts = {}
+    field_counts: dict[str, int] = {}
 
     for entry in entries:
         for field, value in entry.items():
@@ -2043,7 +2033,9 @@ async def inspect_feed_schema(
 
     # Detect schemas
     schemas = []
-    if any(entry.get("subtitle") or entry.get("episode") or entry.get("season") for entry in entries):
+    if any(
+        entry.get("subtitle") or entry.get("episode") or entry.get("season") for entry in entries
+    ):
         schemas.append("iTunes Podcast")
     if any("explicit" in entry for entry in entries):
         schemas.append("iTunes (with explicit flag)")
@@ -2128,7 +2120,10 @@ async def configure_model(model_name: str) -> str:
         return _dump_json(
             {
                 "success": False,
-                "error": "Similarity search not available. Install with: pip install sentence-transformers",
+                "error": (
+                    "Similarity search not available. "
+                    "Install with: pip install sentence-transformers"
+                ),
             }
         )
 
@@ -2197,7 +2192,10 @@ async def hybrid_search(
         return _dump_json(
             {
                 "success": False,
-                "error": "Hybrid search requires similarity features. Install with: pip install 'mcp-rss-search[similarity]'",
+                "error": (
+                    "Hybrid search requires similarity features. "
+                    "Install with: pip install 'mcp-rss-search[similarity]'"
+                ),
             }
         )
 
@@ -2303,7 +2301,10 @@ async def document_search(
         return _dump_json(
             {
                 "success": False,
-                "error": "Semantic search requires similarity features. Install with: pip install 'mcp-rss-search[similarity]'",
+                "error": (
+                    "Semantic search requires similarity features. "
+                    "Install with: pip install 'mcp-rss-search[similarity]'"
+                ),
             }
         )
 
@@ -2347,7 +2348,7 @@ async def document_search(
         return _dump_json({"success": False, "error": str(e)})
 
 
-def main():
+def main() -> None:
     """Main server entry point."""
     import argparse
 
