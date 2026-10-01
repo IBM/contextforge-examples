@@ -12,7 +12,7 @@ use rmcp::{
     ServerHandler,
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, Content, Implementation, InitializeResult, ProtocolVersion,
+        CallToolResult, ContentBlock, Implementation, InitializeResult, ProtocolVersion,
         ServerCapabilities, ServerInfo,
     },
     schemars, tool, tool_handler, tool_router,
@@ -128,7 +128,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting directory listing to JSON: {}", e),
                 None,
@@ -165,7 +165,7 @@ impl FilesystemServer {
                 },
             };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting search results to JSON: {}", e),
                 None,
@@ -195,7 +195,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file content to JSON: {}", e),
                 None,
@@ -225,7 +225,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file content to JSON: {}", e),
                 None,
@@ -261,7 +261,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file content to JSON: {}", e),
                 None,
@@ -294,7 +294,7 @@ impl FilesystemServer {
                     success: false,
                 },
             };
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file content to JSON: {}", e),
                 None,
@@ -324,7 +324,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file content to JSON: {}", e),
                 None,
@@ -357,7 +357,7 @@ impl FilesystemServer {
                 },
             };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting multiple file contents to JSON: {}", e),
                 None,
@@ -391,7 +391,7 @@ impl FilesystemServer {
             },
         };
 
-        let content = Content::json(&result).map_err(|e| {
+        let content = ContentBlock::json(&result).map_err(|e| {
             McpError::internal_error(
                 format!("Error converting file metadata to JSON: {}", e),
                 None,
@@ -409,7 +409,7 @@ impl FilesystemServer {
     async fn list_allowed_directories(&self) -> Result<CallToolResult, McpError> {
         tracing::info!("List allowed directories");
         let roots = self.ctx.sandbox.get_roots();
-        let content = Content::json(&roots).map_err(|e| {
+        let content = ContentBlock::json(&roots).map_err(|e| {
             McpError::internal_error(format!("Error converting roots to JSON: {}", e), None)
         })?;
         tracing::info!("Success: Allowed directories {:?}", roots);
