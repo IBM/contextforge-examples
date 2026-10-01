@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/storage/cache.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,20 +7,23 @@ Caching system for MCP Eval Server.
 """
 
 # Standard
-from hashlib import sha256
 import time
-from typing import Any, Dict, Optional
+from hashlib import sha256
+from typing import Any
+
+import diskcache as dc
+import orjson
 
 # Third-Party
 from cachetools import TTLCache
-import diskcache as dc
-import orjson
 
 
 class EvaluationCache:
     """Cache for evaluation results with TTL and persistence options."""
 
-    def __init__(self, max_size: int = 1000, ttl_seconds: int = 3600, disk_cache_dir: Optional[str] = None):
+    def __init__(
+        self, max_size: int = 1000, ttl_seconds: int = 3600, disk_cache_dir: str | None = None
+    ):
         """Initialize cache.
 
         Args:
@@ -47,7 +49,7 @@ class EvaluationCache:
         key_bytes = orjson.dumps(sorted_items, option=orjson.OPT_SORT_KEYS)
         return sha256(key_bytes).hexdigest()
 
-    async def get(self, **kwargs) -> Optional[Dict[str, Any]]:
+    async def get(self, **kwargs) -> dict[str, Any] | None:
         """Get cached evaluation result.
 
         Args:
@@ -81,7 +83,7 @@ class EvaluationCache:
 
         return None
 
-    async def set(self, result: Dict[str, Any], **kwargs) -> None:
+    async def set(self, result: dict[str, Any], **kwargs) -> None:
         """Cache evaluation result.
 
         Args:
@@ -135,25 +137,36 @@ class EvaluationCache:
                 # Handle disk cache errors gracefully
                 pass
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:
             Dict[str, Any]: Dictionary containing memory and disk cache statistics.
         """
-        memory_stats = {"size": len(self.memory_cache), "max_size": self.memory_cache.maxsize, "hits": getattr(self.memory_cache, "hits", 0), "misses": getattr(self.memory_cache, "misses", 0)}
+        memory_stats = {
+            "size": len(self.memory_cache),
+            "max_size": self.memory_cache.maxsize,
+            "hits": getattr(self.memory_cache, "hits", 0),
+            "misses": getattr(self.memory_cache, "misses", 0),
+        }
 
         disk_stats = {}
         if self.disk_cache:
             disk_stats = {"size": len(self.disk_cache), "volume": self.disk_cache.volume()}
 
-        return {"memory_cache": memory_stats, "disk_cache": disk_stats, "ttl_seconds": self.ttl_seconds}
+        return {
+            "memory_cache": memory_stats,
+            "disk_cache": disk_stats,
+            "ttl_seconds": self.ttl_seconds,
+        }
 
 
 class JudgeResponseCache(EvaluationCache):
     """Specialized cache for judge responses."""
 
-    async def get_judge_result(self, judge_model: str, response: str, criteria: list, context: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def get_judge_result(
+        self, judge_model: str, response: str, criteria: list, context: str | None = None
+    ) -> dict[str, Any] | None:
         """Get cached judge evaluation result.
 
         Args:
@@ -165,9 +178,18 @@ class JudgeResponseCache(EvaluationCache):
         Returns:
             Optional[Dict[str, Any]]: Cached judge result if found, None otherwise.
         """
-        return await self.get(judge_model=judge_model, response=response, criteria=criteria, context=context)
+        return await self.get(
+            judge_model=judge_model, response=response, criteria=criteria, context=context
+        )
 
-    async def cache_judge_result(self, result: Dict[str, Any], judge_model: str, response: str, criteria: list, context: Optional[str] = None) -> None:
+    async def cache_judge_result(
+        self,
+        result: dict[str, Any],
+        judge_model: str,
+        response: str,
+        criteria: list,
+        context: str | None = None,
+    ) -> None:
         """Cache judge evaluation result.
 
         Args:
@@ -177,13 +199,17 @@ class JudgeResponseCache(EvaluationCache):
             criteria: List of evaluation criteria.
             context: Optional context for the evaluation.
         """
-        await self.set(result, judge_model=judge_model, response=response, criteria=criteria, context=context)
+        await self.set(
+            result, judge_model=judge_model, response=response, criteria=criteria, context=context
+        )
 
 
 class BenchmarkCache(EvaluationCache):
     """Specialized cache for benchmark results."""
 
-    async def get_benchmark_result(self, benchmark_suite: str, agent_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def get_benchmark_result(
+        self, benchmark_suite: str, agent_config: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Get cached benchmark result.
 
         Args:
@@ -195,7 +221,9 @@ class BenchmarkCache(EvaluationCache):
         """
         return await self.get(benchmark_suite=benchmark_suite, agent_config=agent_config)
 
-    async def cache_benchmark_result(self, result: Dict[str, Any], benchmark_suite: str, agent_config: Dict[str, Any]) -> None:
+    async def cache_benchmark_result(
+        self, result: dict[str, Any], benchmark_suite: str, agent_config: dict[str, Any]
+    ) -> None:
         """Cache benchmark result.
 
         Args:

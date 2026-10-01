@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/performance_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,8 @@ MCP tools for performance monitoring and evaluation.
 import asyncio
 import statistics
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 # Third-Party
 import psutil
@@ -23,7 +23,7 @@ from .judge_tools import JudgeTools
 class PerformanceTools:
     """Tools for performance monitoring and evaluation."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize performance tools.
 
         Args:
@@ -34,12 +34,12 @@ class PerformanceTools:
 
     async def measure_response_latency(
         self,
-        test_inputs: List[str],
-        target_function: Optional[Callable] = None,
+        test_inputs: list[str],
+        target_function: Callable | None = None,
         warmup_runs: int = 2,
         measurement_runs: int = 10,
         timeout_seconds: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Track generation speed and response times.
 
         Args:
@@ -64,7 +64,7 @@ class PerformanceTools:
             for _ in range(warmup_runs):
                 try:
                     await asyncio.wait_for(target_function(test_input), timeout=timeout_seconds)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
 
             # Measurement runs
@@ -75,26 +75,35 @@ class PerformanceTools:
                     end_time = time.perf_counter()
                     latency = end_time - start_time
                     input_latencies.append(latency)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     input_latencies.append(timeout_seconds)  # Mark as timeout
                 except Exception:
                     input_latencies.append(float("inf"))  # Mark as error
 
             # Calculate statistics for this input
-            valid_latencies = [latency for latency in input_latencies if latency != float("inf") and latency < timeout_seconds]
+            valid_latencies = [
+                latency
+                for latency in input_latencies
+                if latency != float("inf") and latency < timeout_seconds
+            ]
 
             if valid_latencies:
                 latency_stats = {
                     "input": test_input[:100],  # Truncate for display
                     "mean_latency": statistics.mean(valid_latencies),
                     "median_latency": statistics.median(valid_latencies),
-                    "std_latency": statistics.stdev(valid_latencies) if len(valid_latencies) > 1 else 0.0,
+                    "std_latency": (
+                        statistics.stdev(valid_latencies) if len(valid_latencies) > 1 else 0.0
+                    ),
                     "min_latency": min(valid_latencies),
                     "max_latency": max(valid_latencies),
                     "p95_latency": self._calculate_percentile(valid_latencies, 95),
                     "p99_latency": self._calculate_percentile(valid_latencies, 99),
                     "success_rate": len(valid_latencies) / measurement_runs,
-                    "timeout_rate": sum(1 for latency in input_latencies if latency >= timeout_seconds) / measurement_runs,
+                    "timeout_rate": sum(
+                        1 for latency in input_latencies if latency >= timeout_seconds
+                    )
+                    / measurement_runs,
                 }
             else:
                 latency_stats = {
@@ -116,7 +125,9 @@ class PerformanceTools:
             aggregate_stats = {
                 "overall_mean_latency": statistics.mean(all_latencies),
                 "overall_median_latency": statistics.median(all_latencies),
-                "overall_std_latency": statistics.stdev(all_latencies) if len(all_latencies) > 1 else 0.0,
+                "overall_std_latency": (
+                    statistics.stdev(all_latencies) if len(all_latencies) > 1 else 0.0
+                ),
                 "overall_p95_latency": self._calculate_percentile(all_latencies, 95),
                 "overall_p99_latency": self._calculate_percentile(all_latencies, 99),
             }
@@ -130,18 +141,30 @@ class PerformanceTools:
                 "total_inputs_tested": len(test_inputs),
                 "measurement_runs_per_input": measurement_runs,
                 "timeout_threshold": timeout_seconds,
-                "fastest_input": min(latency_results, key=lambda x: x.get("mean_latency", float("inf")))["input"][:50] if all_latencies else None,
-                "slowest_input": max(latency_results, key=lambda x: x.get("mean_latency", 0))["input"][:50] if all_latencies else None,
+                "fastest_input": (
+                    min(latency_results, key=lambda x: x.get("mean_latency", float("inf")))[
+                        "input"
+                    ][:50]
+                    if all_latencies
+                    else None
+                ),
+                "slowest_input": (
+                    max(latency_results, key=lambda x: x.get("mean_latency", 0))["input"][:50]
+                    if all_latencies
+                    else None
+                ),
             },
-            "recommendations": self._generate_latency_recommendations(aggregate_stats, latency_results),
+            "recommendations": self._generate_latency_recommendations(
+                aggregate_stats, latency_results
+            ),
         }
 
     async def assess_computational_efficiency(
         self,
-        test_workloads: List[Dict[str, Any]],
+        test_workloads: list[dict[str, Any]],
         resource_monitoring_interval: float = 0.1,
-        efficiency_metrics: List[str] = None,
-    ) -> Dict[str, Any]:
+        efficiency_metrics: list[str] = None,
+    ) -> dict[str, Any]:
         """Measure resource usage and computational efficiency.
 
         Args:
@@ -162,7 +185,9 @@ class PerformanceTools:
         efficiency_results = []
 
         for workload in test_workloads:
-            efficiency_result = await self._measure_workload_efficiency(workload, baseline_cpu, baseline_memory, resource_monitoring_interval)
+            efficiency_result = await self._measure_workload_efficiency(
+                workload, baseline_cpu, baseline_memory, resource_monitoring_interval
+            )
             efficiency_results.append(efficiency_result)
 
         # Aggregate efficiency metrics
@@ -185,7 +210,11 @@ class PerformanceTools:
         # Calculate overall efficiency score
         efficiency_scores = []
         for result in efficiency_results:
-            workload_efficiency = 1.0 - min(1.0, result["resource_usage"]["peak_cpu"] / 100.0 + result["resource_usage"]["peak_memory_mb"] / 1000.0)
+            workload_efficiency = 1.0 - min(
+                1.0,
+                result["resource_usage"]["peak_cpu"] / 100.0
+                + result["resource_usage"]["peak_memory_mb"] / 1000.0,
+            )
             efficiency_scores.append(max(0.0, workload_efficiency))
 
         overall_efficiency = statistics.mean(efficiency_scores) if efficiency_scores else 0.0
@@ -202,19 +231,33 @@ class PerformanceTools:
                 "workloads_tested": len(test_workloads),
                 "efficiency_metrics": efficiency_metrics,
                 "monitoring_interval": resource_monitoring_interval,
-                "most_efficient_workload": min(efficiency_results, key=lambda x: x["resource_usage"]["peak_cpu"])["workload"]["name"] if efficiency_results else None,
-                "least_efficient_workload": max(efficiency_results, key=lambda x: x["resource_usage"]["peak_cpu"])["workload"]["name"] if efficiency_results else None,
+                "most_efficient_workload": (
+                    min(efficiency_results, key=lambda x: x["resource_usage"]["peak_cpu"])[
+                        "workload"
+                    ]["name"]
+                    if efficiency_results
+                    else None
+                ),
+                "least_efficient_workload": (
+                    max(efficiency_results, key=lambda x: x["resource_usage"]["peak_cpu"])[
+                        "workload"
+                    ]["name"]
+                    if efficiency_results
+                    else None
+                ),
             },
-            "recommendations": self._generate_efficiency_recommendations(overall_efficiency, metric_aggregates),
+            "recommendations": self._generate_efficiency_recommendations(
+                overall_efficiency, metric_aggregates
+            ),
         }
 
     async def evaluate_throughput_scaling(
         self,
         test_request: str,
-        concurrency_levels: List[int] = None,
+        concurrency_levels: list[int] = None,
         requests_per_level: int = 20,
-        target_function: Optional[Callable] = None,
-    ) -> Dict[str, Any]:
+        target_function: Callable | None = None,
+    ) -> dict[str, Any]:
         """Test concurrent request handling and scaling behavior.
 
         Args:
@@ -235,7 +278,9 @@ class PerformanceTools:
         scaling_results = []
 
         for concurrency in concurrency_levels:
-            scaling_result = await self._test_concurrency_level(test_request, concurrency, requests_per_level, target_function)
+            scaling_result = await self._test_concurrency_level(
+                test_request, concurrency, requests_per_level, target_function
+            )
             scaling_results.append(scaling_result)
 
         # Analyze scaling characteristics
@@ -261,16 +306,18 @@ class PerformanceTools:
                 "throughput_peak": max_throughput,
                 "degradation_point": scaling_analysis["degradation_point"],
             },
-            "recommendations": self._generate_throughput_recommendations(scaling_analysis, bottlenecks),
+            "recommendations": self._generate_throughput_recommendations(
+                scaling_analysis, bottlenecks
+            ),
         }
 
     async def monitor_memory_usage(
         self,
         monitoring_duration: float = 60.0,
         sampling_interval: float = 1.0,
-        workload_function: Optional[Callable] = None,
+        workload_function: Callable | None = None,
         memory_threshold_mb: float = 1000.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Track memory consumption patterns during execution.
 
         Args:
@@ -369,7 +416,7 @@ class PerformanceTools:
         await asyncio.sleep(processing_time)
         return f"Simulated response for: {input_text[:50]}..."
 
-    def _calculate_percentile(self, values: List[float], percentile: int) -> float:
+    def _calculate_percentile(self, values: list[float], percentile: int) -> float:
         """Calculate percentile of values.
 
         Args:
@@ -387,7 +434,9 @@ class PerformanceTools:
         index = min(index, len(sorted_values) - 1)
         return sorted_values[index]
 
-    async def _measure_workload_efficiency(self, workload: Dict[str, Any], baseline_cpu: float, _baseline_memory: int, _interval: float) -> Dict[str, Any]:
+    async def _measure_workload_efficiency(
+        self, workload: dict[str, Any], baseline_cpu: float, _baseline_memory: int, _interval: float
+    ) -> dict[str, Any]:
         """Measure efficiency for a specific workload.
 
         Args:
@@ -419,7 +468,8 @@ class PerformanceTools:
         efficiency_metrics = {
             "cpu_usage": psutil.cpu_percent() - baseline_cpu,
             "memory_usage": memory_delta,
-            "cpu_per_token": (psutil.cpu_percent() - baseline_cpu) / max(1, len(workload_input.split())),
+            "cpu_per_token": (psutil.cpu_percent() - baseline_cpu)
+            / max(1, len(workload_input.split())),
             "memory_per_token": memory_delta / max(1, len(workload_input.split())),
         }
 
@@ -436,7 +486,9 @@ class PerformanceTools:
             "resource_usage": resource_usage,
         }
 
-    async def _test_concurrency_level(self, request: str, concurrency: int, total_requests: int, target_function: Callable) -> Dict[str, Any]:
+    async def _test_concurrency_level(
+        self, request: str, concurrency: int, total_requests: int, target_function: Callable
+    ) -> dict[str, Any]:
         """Test throughput at a specific concurrency level.
 
         Args:
@@ -465,7 +517,9 @@ class PerformanceTools:
 
         # Wait for all tasks to complete
         try:
-            results = await asyncio.gather(*[controlled_execution(task) for task in tasks], return_exceptions=True)
+            results = await asyncio.gather(
+                *[controlled_execution(task) for task in tasks], return_exceptions=True
+            )
             end_time = time.time()
 
             # Analyze results
@@ -495,7 +549,7 @@ class PerformanceTools:
             "avg_response_time": total_time / max(1, successful_requests),
         }
 
-    def _analyze_scaling_behavior(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_scaling_behavior(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         """Analyze scaling behavior from throughput test results.
 
         Args:
@@ -519,7 +573,9 @@ class PerformanceTools:
         if len(results) >= 2:
             # Linear scaling would mean throughput increases proportionally with concurrency
             ideal_scaling = [(throughputs[0] * c / concurrencies[0]) for c in concurrencies]
-            actual_vs_ideal = [actual / ideal for actual, ideal in zip(throughputs, ideal_scaling)]
+            actual_vs_ideal = [
+                actual / ideal for actual, ideal in zip(throughputs, ideal_scaling, strict=False)
+            ]
             scaling_efficiency = statistics.mean(actual_vs_ideal)
         else:
             scaling_efficiency = 1.0
@@ -536,10 +592,10 @@ class PerformanceTools:
             "peak_throughput": peak_throughput,
             "peak_concurrency": peak_concurrency,
             "degradation_point": degradation_point,
-            "throughput_curve": list(zip(concurrencies, throughputs)),
+            "throughput_curve": list(zip(concurrencies, throughputs, strict=False)),
         }
 
-    def _detect_throughput_bottlenecks(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _detect_throughput_bottlenecks(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Detect throughput bottlenecks from scaling results.
 
         Args:
@@ -578,7 +634,9 @@ class PerformanceTools:
 
         return bottlenecks
 
-    def _analyze_memory_patterns(self, samples: List[Dict[str, Any]], threshold: float) -> Dict[str, Any]:
+    def _analyze_memory_patterns(
+        self, samples: list[dict[str, Any]], threshold: float
+    ) -> dict[str, Any]:
         """Analyze memory usage patterns.
 
         Args:
@@ -615,11 +673,15 @@ class PerformanceTools:
             "memory_efficiency": memory_efficiency,
             "peak_memory": peak_memory,
             "avg_memory": avg_memory,
-            "memory_variance": statistics.variance(process_memory) if len(process_memory) > 1 else 0.0,
+            "memory_variance": (
+                statistics.variance(process_memory) if len(process_memory) > 1 else 0.0
+            ),
             "threshold_exceeded": any(m > threshold for m in process_memory),
         }
 
-    def _detect_memory_issues(self, samples: List[Dict[str, Any]], threshold: float) -> List[Dict[str, Any]]:
+    def _detect_memory_issues(
+        self, samples: list[dict[str, Any]], threshold: float
+    ) -> list[dict[str, Any]]:
         """Detect memory-related issues.
 
         Args:
@@ -678,7 +740,7 @@ class PerformanceTools:
 
         return issues
 
-    def _calculate_memory_growth_rate(self, samples: List[Dict[str, Any]]) -> float:
+    def _calculate_memory_growth_rate(self, samples: list[dict[str, Any]]) -> float:
         """Calculate memory growth rate over time.
 
         Args:
@@ -697,7 +759,7 @@ class PerformanceTools:
         n = len(samples)
         sum_x = sum(timestamps)
         sum_y = sum(process_memory)
-        sum_xy = sum(t * m for t, m in zip(timestamps, process_memory))
+        sum_xy = sum(t * m for t, m in zip(timestamps, process_memory, strict=False))
         sum_x2 = sum(t * t for t in timestamps)
 
         if n * sum_x2 - sum_x * sum_x != 0:
@@ -705,7 +767,7 @@ class PerformanceTools:
             return slope  # MB per second
         return 0.0
 
-    def _calculate_memory_stability(self, memory_values: List[float]) -> float:
+    def _calculate_memory_stability(self, memory_values: list[float]) -> float:
         """Calculate memory usage stability.
 
         Args:
@@ -731,7 +793,7 @@ class PerformanceTools:
 
     # Recommendation generation methods
 
-    def _generate_latency_recommendations(self, stats: Dict, results: List) -> List[str]:
+    def _generate_latency_recommendations(self, stats: dict, results: list) -> list[str]:
         """Generate recommendations for improving latency.
 
         Args:
@@ -746,7 +808,9 @@ class PerformanceTools:
         if stats.get("overall_mean_latency", 0) > 2.0:
             recommendations.append("Optimize response generation for better latency")
 
-        high_variance_inputs = [r for r in results if r.get("std_latency", 0) > r.get("mean_latency", 0) * 0.5]
+        high_variance_inputs = [
+            r for r in results if r.get("std_latency", 0) > r.get("mean_latency", 0) * 0.5
+        ]
         if high_variance_inputs:
             recommendations.append("Address high latency variance for consistent performance")
 
@@ -756,7 +820,7 @@ class PerformanceTools:
 
         return recommendations
 
-    def _generate_efficiency_recommendations(self, efficiency: float, metrics: Dict) -> List[str]:
+    def _generate_efficiency_recommendations(self, efficiency: float, metrics: dict) -> list[str]:
         """Generate recommendations for improving computational efficiency.
 
         Args:
@@ -771,17 +835,25 @@ class PerformanceTools:
         if efficiency < 0.7:
             recommendations.append("Optimize computational efficiency")
 
-        high_cpu_metrics = [metric for metric, data in metrics.items() if "cpu" in metric and data.get("mean", 0) > 50]
+        high_cpu_metrics = [
+            metric
+            for metric, data in metrics.items()
+            if "cpu" in metric and data.get("mean", 0) > 50
+        ]
         if high_cpu_metrics:
             recommendations.append("Reduce CPU usage for better efficiency")
 
-        high_memory_metrics = [metric for metric, data in metrics.items() if "memory" in metric and data.get("mean", 0) > 500]
+        high_memory_metrics = [
+            metric
+            for metric, data in metrics.items()
+            if "memory" in metric and data.get("mean", 0) > 500
+        ]
         if high_memory_metrics:
             recommendations.append("Optimize memory usage")
 
         return recommendations
 
-    def _generate_throughput_recommendations(self, analysis: Dict, bottlenecks: List) -> List[str]:
+    def _generate_throughput_recommendations(self, analysis: dict, bottlenecks: list) -> list[str]:
         """Generate recommendations for improving throughput.
 
         Args:
@@ -797,7 +869,10 @@ class PerformanceTools:
             recommendations.append("Improve scaling efficiency for better throughput")
 
         if analysis.get("degradation_point"):
-            recommendations.append(f"Investigate performance degradation above {analysis['degradation_point']} concurrent requests")
+            recommendations.append(
+                f"Investigate performance degradation above {analysis['degradation_point']} "
+                f"concurrent requests"
+            )
 
         bottleneck_types = [b["type"] for b in bottlenecks]
         if "high_failure_rate" in bottleneck_types:
@@ -805,7 +880,7 @@ class PerformanceTools:
 
         return recommendations
 
-    def _generate_memory_recommendations(self, metrics: Dict, issues: List) -> List[str]:
+    def _generate_memory_recommendations(self, metrics: dict, issues: list) -> list[str]:
         """Generate recommendations for memory optimization.
 
         Args:
@@ -833,7 +908,15 @@ class PerformanceTools:
         return recommendations
 
     # Additional placeholder methods for complex operations
-    async def _compare_cross_lingual_texts(self, _text1: str, _text2: str, _lang1: str, _lang2: str, metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _compare_cross_lingual_texts(
+        self,
+        _text1: str,
+        _text2: str,
+        _lang1: str,
+        _lang2: str,
+        metrics: list[str],
+        _judge_model: str,
+    ) -> dict[str, Any]:
         """Compare texts across languages.
 
         Args:
@@ -850,7 +933,15 @@ class PerformanceTools:
         consistency_scores = {metric: 0.8 for metric in metrics}  # Placeholder
         return {"consistency_scores": consistency_scores}
 
-    async def _compare_translation_pair(self, _text1: str, _text2: str, _lang1: str, _lang2: str, metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _compare_translation_pair(
+        self,
+        _text1: str,
+        _text2: str,
+        _lang1: str,
+        _lang2: str,
+        metrics: list[str],
+        _judge_model: str,
+    ) -> dict[str, Any]:
         """Compare pair of translations.
 
         Args:
@@ -867,7 +958,9 @@ class PerformanceTools:
         consistency_scores = {metric: 0.75 for metric in metrics}  # Placeholder
         return {"consistency_scores": consistency_scores}
 
-    async def _assess_cultural_dimension(self, _text: str, _culture: str, _dimension: str, _judge_model: str) -> float:
+    async def _assess_cultural_dimension(
+        self, _text: str, _culture: str, _dimension: str, _judge_model: str
+    ) -> float:
         """Assess cultural adaptation dimension.
 
         Args:
@@ -881,7 +974,9 @@ class PerformanceTools:
         """
         return 0.7  # Placeholder
 
-    async def _compare_cultural_adaptation(self, _text: str, _reference: str, _culture: str, _judge_model: str) -> Dict[str, Any]:
+    async def _compare_cultural_adaptation(
+        self, _text: str, _reference: str, _culture: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Compare cultural adaptation with reference.
 
         Args:
@@ -895,7 +990,9 @@ class PerformanceTools:
         """
         return {"comparison_score": 0.8}  # Placeholder
 
-    async def _llm_assess_language_mixing(self, _text: str, _expected_lang: str, _judge_model: str) -> Dict[str, Any]:
+    async def _llm_assess_language_mixing(
+        self, _text: str, _expected_lang: str, _judge_model: str
+    ) -> dict[str, Any]:
         """LLM assessment of language mixing.
 
         Args:

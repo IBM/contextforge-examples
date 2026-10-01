@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/calibration_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,10 +7,10 @@ MCP tools for calibration and meta-evaluation.
 """
 
 # Standard
-from collections import Counter
 import secrets
 import statistics
-from typing import Any, Dict, List, Optional
+from collections import Counter
+from typing import Any
 
 # Local
 from .judge_tools import JudgeTools
@@ -20,7 +19,7 @@ from .judge_tools import JudgeTools
 class CalibrationTools:
     """Tools for judge calibration and meta-evaluation."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize calibration tools.
 
         Args:
@@ -30,11 +29,11 @@ class CalibrationTools:
 
     async def test_judge_agreement(
         self,
-        test_cases: List[Dict[str, Any]],
-        judge_models: List[str],
+        test_cases: list[dict[str, Any]],
+        judge_models: list[str],
         correlation_metric: str = "pearson",
-        human_labels: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        human_labels: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Measure agreement between judges and humans.
 
         Args:
@@ -56,16 +55,22 @@ class CalibrationTools:
         judge_evaluations = {}
 
         for judge_model in judge_models:
-            judge_evaluations[judge_model] = await self._evaluate_test_cases(test_cases, judge_model)
+            judge_evaluations[judge_model] = await self._evaluate_test_cases(
+                test_cases, judge_model
+            )
 
         # Calculate inter-judge agreement
-        inter_judge_agreement = self._calculate_inter_judge_agreement(judge_evaluations, correlation_metric)
+        inter_judge_agreement = self._calculate_inter_judge_agreement(
+            judge_evaluations, correlation_metric
+        )
 
         # Calculate human-judge agreement if human labels provided
         human_judge_agreement = {}
         if human_labels:
             for judge_model in judge_models:
-                agreement = self._calculate_human_judge_agreement(human_labels, judge_evaluations[judge_model], correlation_metric)
+                agreement = self._calculate_human_judge_agreement(
+                    human_labels, judge_evaluations[judge_model], correlation_metric
+                )
                 human_judge_agreement[judge_model] = agreement
 
         # Analyze bias patterns
@@ -82,10 +87,14 @@ class CalibrationTools:
             "test_cases_count": len(test_cases),
             "judges_tested": judge_models,
             "correlation_metric": correlation_metric,
-            "recommendations": self._generate_agreement_recommendations(inter_judge_agreement, human_judge_agreement, bias_analysis),
+            "recommendations": self._generate_agreement_recommendations(
+                inter_judge_agreement, human_judge_agreement, bias_analysis
+            ),
         }
 
-    async def _evaluate_test_cases(self, test_cases: List[Dict[str, Any]], judge_model: str) -> List[Dict[str, Any]]:
+    async def _evaluate_test_cases(
+        self, test_cases: list[dict[str, Any]], judge_model: str
+    ) -> list[dict[str, Any]]:
         """Evaluate test cases with a specific judge.
 
         Args:
@@ -102,19 +111,62 @@ class CalibrationTools:
             try:
                 # Extract evaluation parameters from test case
                 response = test_case.get("response", "")
-                criteria = test_case.get("criteria", [{"name": "overall_quality", "description": "Overall quality of the response", "scale": "1-5", "weight": 1.0}])
-                rubric = test_case.get("rubric", {"criteria": criteria, "scale_description": {"1": "Very poor", "2": "Poor", "3": "Average", "4": "Good", "5": "Excellent"}})
+                criteria = test_case.get(
+                    "criteria",
+                    [
+                        {
+                            "name": "overall_quality",
+                            "description": "Overall quality of the response",
+                            "scale": "1-5",
+                            "weight": 1.0,
+                        }
+                    ],
+                )
+                rubric = test_case.get(
+                    "rubric",
+                    {
+                        "criteria": criteria,
+                        "scale_description": {
+                            "1": "Very poor",
+                            "2": "Poor",
+                            "3": "Average",
+                            "4": "Good",
+                            "5": "Excellent",
+                        },
+                    },
+                )
 
-                evaluation = await self.judge_tools.evaluate_response(response=response, criteria=criteria, rubric=rubric, judge_model=judge_model, context=test_case.get("context"))
+                evaluation = await self.judge_tools.evaluate_response(
+                    response=response,
+                    criteria=criteria,
+                    rubric=rubric,
+                    judge_model=judge_model,
+                    context=test_case.get("context"),
+                )
 
-                evaluations.append({"test_case_id": test_case.get("id", len(evaluations)), "evaluation": evaluation, "success": True})
+                evaluations.append(
+                    {
+                        "test_case_id": test_case.get("id", len(evaluations)),
+                        "evaluation": evaluation,
+                        "success": True,
+                    }
+                )
 
             except Exception as e:
-                evaluations.append({"test_case_id": test_case.get("id", len(evaluations)), "evaluation": None, "success": False, "error": str(e)})
+                evaluations.append(
+                    {
+                        "test_case_id": test_case.get("id", len(evaluations)),
+                        "evaluation": None,
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
 
         return evaluations
 
-    def _calculate_inter_judge_agreement(self, judge_evaluations: Dict[str, List[Dict[str, Any]]], metric: str) -> Dict[str, Any]:
+    def _calculate_inter_judge_agreement(
+        self, judge_evaluations: dict[str, list[dict[str, Any]]], metric: str
+    ) -> dict[str, Any]:
         """Calculate agreement between judges.
 
         Args:
@@ -138,7 +190,7 @@ class CalibrationTools:
                 evals_a = judge_evaluations[judge_a]
                 evals_b = judge_evaluations[judge_b]
 
-                for eval_a, eval_b in zip(evals_a, evals_b):
+                for eval_a, eval_b in zip(evals_a, evals_b, strict=False):
                     if eval_a["success"] and eval_b["success"]:
                         score_a = eval_a["evaluation"]["overall_score"]
                         score_b = eval_b["evaluation"]["overall_score"]
@@ -158,7 +210,9 @@ class CalibrationTools:
                     agreement_matrix[f"{judge_a}_vs_{judge_b}"] = {
                         "correlation": correlation,
                         "sample_size": len(scores_a),
-                        "mean_difference": statistics.mean([a - b for a, b in zip(scores_a, scores_b)]),
+                        "mean_difference": statistics.mean(
+                            [a - b for a, b in zip(scores_a, scores_b, strict=False)]
+                        ),
                     }
 
         # Calculate overall agreement
@@ -168,11 +222,20 @@ class CalibrationTools:
         return {
             "pairwise_agreements": agreement_matrix,
             "overall_agreement": overall_agreement,
-            "agreement_range": {"min": min(correlations) if correlations else 0.0, "max": max(correlations) if correlations else 0.0},
-            "consistency": "high" if overall_agreement > 0.8 else "medium" if overall_agreement > 0.6 else "low",
+            "agreement_range": {
+                "min": min(correlations) if correlations else 0.0,
+                "max": max(correlations) if correlations else 0.0,
+            },
+            "consistency": (
+                "high"
+                if overall_agreement > 0.8
+                else "medium" if overall_agreement > 0.6 else "low"
+            ),
         }
 
-    def _calculate_human_judge_agreement(self, human_labels: Dict[str, Any], judge_evaluations: List[Dict[str, Any]], metric: str) -> Dict[str, Any]:
+    def _calculate_human_judge_agreement(
+        self, human_labels: dict[str, Any], judge_evaluations: list[dict[str, Any]], metric: str
+    ) -> dict[str, Any]:
         """Calculate agreement between human and judge evaluations.
 
         Args:
@@ -214,11 +277,17 @@ class CalibrationTools:
         return {
             "correlation": correlation,
             "sample_size": len(human_scores),
-            "mean_bias": statistics.mean([j - h for h, j in zip(human_scores, judge_scores)]) if human_scores else 0.0,
-            "agreement_level": "high" if correlation > 0.7 else "medium" if correlation > 0.5 else "low",
+            "mean_bias": (
+                statistics.mean([j - h for h, j in zip(human_scores, judge_scores, strict=False)])
+                if human_scores
+                else 0.0
+            ),
+            "agreement_level": (
+                "high" if correlation > 0.7 else "medium" if correlation > 0.5 else "low"
+            ),
         }
 
-    def _pearson_correlation(self, x: List[float], y: List[float]) -> float:
+    def _pearson_correlation(self, x: list[float], y: list[float]) -> float:
         """Calculate Pearson correlation coefficient.
 
         Args:
@@ -234,7 +303,7 @@ class CalibrationTools:
         n = len(x)
         sum_x = sum(x)
         sum_y = sum(y)
-        sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+        sum_xy = sum(xi * yi for xi, yi in zip(x, y, strict=False))
         sum_x2 = sum(xi * xi for xi in x)
         sum_y2 = sum(yi * yi for yi in y)
 
@@ -246,7 +315,7 @@ class CalibrationTools:
 
         return numerator / denominator
 
-    def _spearman_correlation(self, x: List[float], y: List[float]) -> float:
+    def _spearman_correlation(self, x: list[float], y: list[float]) -> float:
         """Calculate Spearman rank correlation coefficient.
 
         Args:
@@ -272,7 +341,7 @@ class CalibrationTools:
 
         return self._pearson_correlation(rank_x, rank_y)
 
-    def _cohen_kappa(self, x: List[float], y: List[float]) -> float:
+    def _cohen_kappa(self, x: list[float], y: list[float]) -> float:
         """Calculate Cohen's kappa (simplified for continuous values).
 
         Args:
@@ -301,7 +370,7 @@ class CalibrationTools:
         cat_y = categorize(y)
 
         # Calculate observed agreement
-        agreements = sum(1 for cx, cy in zip(cat_x, cat_y) if cx == cy)
+        agreements = sum(1 for cx, cy in zip(cat_x, cat_y, strict=False) if cx == cy)
         po = agreements / len(cat_x)
 
         # Calculate expected agreement (simplified)
@@ -317,7 +386,11 @@ class CalibrationTools:
 
         return (po - pe) / (1 - pe)
 
-    def _analyze_judge_bias(self, judge_evaluations: Dict[str, List[Dict[str, Any]]], human_labels: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _analyze_judge_bias(
+        self,
+        judge_evaluations: dict[str, list[dict[str, Any]]],
+        human_labels: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Analyze systematic bias patterns in judges.
 
         Args:
@@ -344,7 +417,13 @@ class CalibrationTools:
 
             # Severity bias (tendency to be harsh or lenient)
             if human_labels:
-                human_mean = statistics.mean([human_labels[str(e["test_case_id"])].get("score", 3.0) for e in successful_evals if str(e["test_case_id"]) in human_labels])
+                human_mean = statistics.mean(
+                    [
+                        human_labels[str(e["test_case_id"])].get("score", 3.0)
+                        for e in successful_evals
+                        if str(e["test_case_id"]) in human_labels
+                    ]
+                )
                 severity_bias = mean_score - human_mean
             else:
                 severity_bias = mean_score - 3.0  # Assume 3.0 as neutral
@@ -383,14 +462,17 @@ class CalibrationTools:
             return "medium"
         return "low"
 
-    def _calculate_reliability_metrics(self, judge_evaluations: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+    def _calculate_reliability_metrics(
+        self, judge_evaluations: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, Any]:
         """Calculate reliability metrics for judges.
 
         Args:
             judge_evaluations: Dictionary of judge evaluation results by judge name.
 
         Returns:
-            Dict[str, Any]: Reliability metrics for each judge including success rate and consistency.
+            Dict[str, Any]: Reliability metrics for each judge including success rate and
+            consistency.
         """
 
         reliability_metrics = {}
@@ -426,11 +508,11 @@ class CalibrationTools:
 
     async def optimize_rubrics(
         self,
-        current_rubric: Dict[str, Any],
-        human_labels: Dict[str, Any],
+        current_rubric: dict[str, Any],
+        human_labels: dict[str, Any],
         optimization_target: str = "agreement",
         iterations: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Tune evaluation rubrics for better alignment.
 
         Args:
@@ -455,9 +537,17 @@ class CalibrationTools:
 
             for i, variation in enumerate(rubric_variations):
                 # Simulate testing (in real implementation, would test with actual judges)
-                performance = await self._evaluate_rubric_performance(variation, human_labels, optimization_target)
+                performance = await self._evaluate_rubric_performance(
+                    variation, human_labels, optimization_target
+                )
 
-                variation_results.append({"variation_id": f"iter_{iteration}_var_{i}", "rubric": variation, "performance": performance})
+                variation_results.append(
+                    {
+                        "variation_id": f"iter_{iteration}_var_{i}",
+                        "rubric": variation,
+                        "performance": performance,
+                    }
+                )
 
             # Select best variation
             best_variation = max(variation_results, key=lambda x: x["performance"])
@@ -471,17 +561,24 @@ class CalibrationTools:
                     "iteration": iteration + 1,
                     "variations_tested": len(variation_results),
                     "best_performance": best_performance,
-                    "improvement": best_variation["performance"] - (optimization_history[-1]["best_performance"] if optimization_history else 0),
+                    "improvement": best_variation["performance"]
+                    - (optimization_history[-1]["best_performance"] if optimization_history else 0),
                 }
             )
 
         # Calculate performance gain
-        initial_performance = await self._evaluate_rubric_performance(current_rubric, human_labels, optimization_target)
+        initial_performance = await self._evaluate_rubric_performance(
+            current_rubric, human_labels, optimization_target
+        )
         performance_gain = {
             "initial_performance": initial_performance,
             "optimized_performance": best_performance,
             "absolute_improvement": best_performance - initial_performance,
-            "relative_improvement": (best_performance - initial_performance) / initial_performance if initial_performance > 0 else 0,
+            "relative_improvement": (
+                (best_performance - initial_performance) / initial_performance
+                if initial_performance > 0
+                else 0
+            ),
         }
 
         # Analyze changes made
@@ -494,10 +591,14 @@ class CalibrationTools:
             "changes_made": changes_made,
             "optimization_target": optimization_target,
             "iterations_run": iterations,
-            "recommendations": self._generate_optimization_recommendations(performance_gain, changes_made, optimization_target),
+            "recommendations": self._generate_optimization_recommendations(
+                performance_gain, changes_made, optimization_target
+            ),
         }
 
-    def _generate_rubric_variations(self, base_rubric: Dict[str, Any], iteration: int) -> List[Dict[str, Any]]:
+    def _generate_rubric_variations(
+        self, base_rubric: dict[str, Any], iteration: int
+    ) -> list[dict[str, Any]]:
         """Generate variations of a rubric for optimization.
 
         Args:
@@ -516,9 +617,13 @@ class CalibrationTools:
             # Make descriptions more specific
             for scale, description in variation_1["scale_description"].items():
                 if "good" in description.lower():
-                    variation_1["scale_description"][scale] = description.replace("Good", "Above average with clear strengths")
+                    variation_1["scale_description"][scale] = description.replace(
+                        "Good", "Above average with clear strengths"
+                    )
                 elif "excellent" in description.lower():
-                    variation_1["scale_description"][scale] = description.replace("Excellent", "Outstanding with exceptional quality")
+                    variation_1["scale_description"][scale] = description.replace(
+                        "Excellent", "Outstanding with exceptional quality"
+                    )
         variations.append(variation_1)
 
         # Variation 2: Adjust criteria weights
@@ -527,26 +632,36 @@ class CalibrationTools:
             for criterion in variation_2["criteria"]:
                 # Slightly adjust weights
                 current_weight = criterion.get("weight", 1.0)
-                criterion["weight"] = max(0.1, min(2.0, current_weight * (0.8 + secrets.SystemRandom().random() * 0.4)))
+                criterion["weight"] = max(
+                    0.1, min(2.0, current_weight * (0.8 + secrets.SystemRandom().random() * 0.4))
+                )
         variations.append(variation_2)
 
         # Variation 3: Add new criteria or modify existing ones
         variation_3 = base_rubric.copy()
         if "criteria" in variation_3:
             # Add a new criterion
-            new_criterion = {"name": f"detailed_analysis_iter_{iteration}", "description": "Depth and thoroughness of analysis provided", "scale": "1-5", "weight": 0.3}
+            new_criterion = {
+                "name": f"detailed_analysis_iter_{iteration}",
+                "description": "Depth and thoroughness of analysis provided",
+                "scale": "1-5",
+                "weight": 0.3,
+            }
             variation_3["criteria"].append(new_criterion)
         variations.append(variation_3)
 
         return variations
 
-    async def _evaluate_rubric_performance(self, rubric: Dict[str, Any], human_labels: Dict[str, Any], optimization_target: str) -> float:  # pylint: disable=unused-argument
+    async def _evaluate_rubric_performance(
+        self, rubric: dict[str, Any], human_labels: dict[str, Any], optimization_target: str
+    ) -> float:  # pylint: disable=unused-argument
         """Evaluate performance of a rubric.
 
         Args:
             rubric: Rubric definition to evaluate.
             human_labels: Ground truth human evaluation labels.
-            optimization_target: Target metric for optimization ('agreement', 'consistency', 'bias').
+            optimization_target: Target metric for optimization ('agreement', 'consistency',
+            'bias').
 
         Returns:
             float: Performance score for the rubric between 0.0 and 1.0.
@@ -560,7 +675,9 @@ class CalibrationTools:
             # Favor rubrics with more specific descriptions
             specificity_bonus = 0.0
             if "scale_description" in rubric:
-                avg_description_length = statistics.mean([len(desc.split()) for desc in rubric["scale_description"].values()])
+                avg_description_length = statistics.mean(
+                    [len(desc.split()) for desc in rubric["scale_description"].values()]
+                )
                 specificity_bonus = min(0.2, avg_description_length / 20)
             performance = base_performance + specificity_bonus
 
@@ -588,7 +705,9 @@ class CalibrationTools:
 
         return max(0.0, min(1.0, performance))
 
-    def _analyze_rubric_changes(self, original_rubric: Dict[str, Any], optimized_rubric: Dict[str, Any]) -> Dict[str, Any]:
+    def _analyze_rubric_changes(
+        self, original_rubric: dict[str, Any], optimized_rubric: dict[str, Any]
+    ) -> dict[str, Any]:
         """Analyze changes made during rubric optimization.
 
         Args:
@@ -596,10 +715,17 @@ class CalibrationTools:
             optimized_rubric: Rubric after optimization.
 
         Returns:
-            Dict[str, Any]: Analysis of changes including new criteria, weight changes, and scale changes.
+            Dict[str, Any]: Analysis of changes including new criteria, weight changes, and
+            scale changes.
         """
 
-        changes = {"criteria_changes": [], "scale_changes": [], "weight_changes": [], "new_criteria": [], "removed_criteria": []}
+        changes = {
+            "criteria_changes": [],
+            "scale_changes": [],
+            "weight_changes": [],
+            "new_criteria": [],
+            "removed_criteria": [],
+        }
 
         # Compare criteria
         original_criteria = {c["name"]: c for c in original_rubric.get("criteria", [])}
@@ -618,7 +744,14 @@ class CalibrationTools:
             opt_weight = optimized_criteria[name].get("weight", 1.0)
 
             if abs(orig_weight - opt_weight) > 0.01:
-                changes["weight_changes"].append({"criterion": name, "original_weight": orig_weight, "optimized_weight": opt_weight, "change": opt_weight - orig_weight})
+                changes["weight_changes"].append(
+                    {
+                        "criterion": name,
+                        "original_weight": orig_weight,
+                        "optimized_weight": opt_weight,
+                        "change": opt_weight - orig_weight,
+                    }
+                )
 
         # Compare scale descriptions
         orig_scales = original_rubric.get("scale_description", {})
@@ -626,11 +759,18 @@ class CalibrationTools:
 
         for scale in orig_scales:
             if scale in opt_scales and orig_scales[scale] != opt_scales[scale]:
-                changes["scale_changes"].append({"scale": scale, "original": orig_scales[scale], "optimized": opt_scales[scale]})
+                changes["scale_changes"].append(
+                    {"scale": scale, "original": orig_scales[scale], "optimized": opt_scales[scale]}
+                )
 
         return changes
 
-    def _generate_agreement_recommendations(self, inter_judge_agreement: Dict[str, Any], human_judge_agreement: Dict[str, Any], bias_analysis: Dict[str, Any]) -> List[str]:
+    def _generate_agreement_recommendations(
+        self,
+        inter_judge_agreement: dict[str, Any],
+        human_judge_agreement: dict[str, Any],
+        bias_analysis: dict[str, Any],
+    ) -> list[str]:
         """Generate recommendations based on agreement analysis.
 
         Args:
@@ -647,25 +787,44 @@ class CalibrationTools:
         # Inter-judge agreement recommendations
         overall_agreement = inter_judge_agreement.get("overall_agreement", 0.0)
         if overall_agreement < 0.6:
-            recommendations.append("Low inter-judge agreement - consider judge training or rubric clarification")
+            recommendations.append(
+                "Low inter-judge agreement - consider judge training or rubric clarification"
+            )
         elif overall_agreement > 0.8:
             recommendations.append("Good inter-judge agreement - judges are well-calibrated")
 
         # Human-judge agreement recommendations
         if human_judge_agreement:
-            low_agreement_judges = [judge for judge, data in human_judge_agreement.items() if data.get("correlation", 0) < 0.6]
+            low_agreement_judges = [
+                judge
+                for judge, data in human_judge_agreement.items()
+                if data.get("correlation", 0) < 0.6
+            ]
             if low_agreement_judges:
-                recommendations.append(f"These judges show low human agreement: {', '.join(low_agreement_judges)}")
+                recommendations.append(
+                    f"These judges show low human agreement: {', '.join(low_agreement_judges)}"
+                )
 
         # Bias recommendations
         if bias_analysis:
-            high_bias_judges = [judge for judge, data in bias_analysis.items() if data.get("bias_severity") == "high"]
+            high_bias_judges = [
+                judge
+                for judge, data in bias_analysis.items()
+                if data.get("bias_severity") == "high"
+            ]
             if high_bias_judges:
-                recommendations.append(f"High bias detected in: {', '.join(high_bias_judges)} - consider recalibration")
+                recommendations.append(
+                    f"High bias detected in: {', '.join(high_bias_judges)} - consider recalibration"
+                )
 
         return recommendations
 
-    def _generate_optimization_recommendations(self, performance_gain: Dict[str, Any], changes_made: Dict[str, Any], optimization_target: str) -> List[str]:  # pylint: disable=unused-argument
+    def _generate_optimization_recommendations(
+        self,
+        performance_gain: dict[str, Any],
+        changes_made: dict[str, Any],
+        optimization_target: str,
+    ) -> list[str]:  # pylint: disable=unused-argument
         """Generate recommendations based on rubric optimization.
 
         Args:
@@ -682,20 +841,32 @@ class CalibrationTools:
         improvement = performance_gain.get("relative_improvement", 0.0)
 
         if improvement > 0.1:
-            recommendations.append(f"Significant improvement achieved ({improvement:.1%}) - implement optimized rubric")
+            recommendations.append(
+                f"Significant improvement achieved ({improvement:.1%}) - implement optimized rubric"
+            )
         elif improvement > 0.05:
-            recommendations.append(f"Moderate improvement achieved ({improvement:.1%}) - consider implementing changes")
+            recommendations.append(
+                f"Moderate improvement achieved ({improvement:.1%}) - consider implementing changes"
+            )
         else:
-            recommendations.append("Limited improvement - current rubric may already be well-optimized")
+            recommendations.append(
+                "Limited improvement - current rubric may already be well-optimized"
+            )
 
         # Specific change recommendations
         if changes_made["new_criteria"]:
-            recommendations.append(f"Added {len(changes_made['new_criteria'])} new criteria for better coverage")
+            recommendations.append(
+                f"Added {len(changes_made['new_criteria'])} new criteria for better coverage"
+            )
 
         if changes_made["weight_changes"]:
-            recommendations.append(f"Adjusted weights for {len(changes_made['weight_changes'])} criteria")
+            recommendations.append(
+                f"Adjusted weights for {len(changes_made['weight_changes'])} criteria"
+            )
 
         if changes_made["scale_changes"]:
-            recommendations.append(f"Refined {len(changes_made['scale_changes'])} scale descriptions for clarity")
+            recommendations.append(
+                f"Refined {len(changes_made['scale_changes'])} scale descriptions for clarity"
+            )
 
         return recommendations

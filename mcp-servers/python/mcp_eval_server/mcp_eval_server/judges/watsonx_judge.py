@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/watsonx_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ IBM Watsonx.ai judge implementation for LLM-as-a-judge evaluation.
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     # Third-Party
@@ -41,7 +40,7 @@ from .base_judge import (
 class WatsonxJudge(BaseJudge):
     """Judge implementation using IBM Watsonx.ai."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize Watsonx.ai judge.
 
         Args:
@@ -54,7 +53,10 @@ class WatsonxJudge(BaseJudge):
         self.logger = logging.getLogger(__name__)
 
         if Model is None:
-            raise ValueError("IBM Watsonx.ai library not installed. Please install with: pip install ibm-watsonx-ai")
+            raise ValueError(
+                "IBM Watsonx.ai library not installed. Please install with: pip install "
+                "ibm-watsonx-ai"
+            )
 
         # Get Watsonx.ai credentials
         api_key = os.getenv(config["api_key_env"])
@@ -64,7 +66,9 @@ class WatsonxJudge(BaseJudge):
         if not api_key:
             raise ValueError(f"API key not found in environment variable: {config['api_key_env']}")
         if not project_id:
-            raise ValueError(f"Project ID not found in environment variable: {config['project_id_env']}")
+            raise ValueError(
+                f"Project ID not found in environment variable: {config['project_id_env']}"
+            )
 
         self.credentials = Credentials(
             url=url,
@@ -78,7 +82,12 @@ class WatsonxJudge(BaseJudge):
         # Initialize the Watsonx model
         self.watsonx_model = Model(
             model_id=self.model_id,
-            params={GenParams.DECODING_METHOD: "greedy", GenParams.MAX_NEW_TOKENS: self.max_tokens, GenParams.TEMPERATURE: self.temperature, GenParams.STOP_SEQUENCES: ["\n\n"]},
+            params={
+                GenParams.DECODING_METHOD: "greedy",
+                GenParams.MAX_NEW_TOKENS: self.max_tokens,
+                GenParams.TEMPERATURE: self.temperature,
+                GenParams.STOP_SEQUENCES: ["\n\n"],
+            },
             credentials=self.credentials,
             project_id=self.project_id,
         )
@@ -89,7 +98,12 @@ class WatsonxJudge(BaseJudge):
         self.logger.debug(f"   URL: {url}")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def _make_api_call(self, messages: List[Dict[str, str]], temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> str:
+    async def _make_api_call(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
         """Make API call with retry logic.
 
         Args:
@@ -104,7 +118,10 @@ class WatsonxJudge(BaseJudge):
             Exception: If Watsonx.ai API call fails
         """
         self.logger.debug(f"🔗 Making Watsonx.ai API call to {self.model}")
-        self.logger.debug(f"   Messages: {len(messages)}, Temperature: {temperature or self.temperature}, Max tokens: {max_tokens or self.max_tokens}")
+        self.logger.debug(
+            f"   Messages: {len(messages)}, Temperature: {temperature or self.temperature}, Max "
+            f"tokens: {max_tokens or self.max_tokens}"
+        )
 
         # Convert messages to single prompt for Watsonx.ai
         prompt_parts = []
@@ -148,14 +165,14 @@ class WatsonxJudge(BaseJudge):
             return result
 
         except Exception as e:
-            raise Exception(f"Watsonx.ai API call failed: {e}")
+            raise Exception(f"Watsonx.ai API call failed: {e}") from e
 
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
     ) -> EvaluationResult:
         """Evaluate a single response using Watsonx.ai.
@@ -174,20 +191,41 @@ class WatsonxJudge(BaseJudge):
         criteria_text = self._format_criteria(criteria)
         rubric_text = self._format_rubric(rubric)
 
-        prompt = self._render_template("evaluation", context=context, response=response, criteria_text=criteria_text, rubric_text=rubric_text, use_cot=use_cot)
+        prompt = self._render_template(
+            "evaluation",
+            context=context,
+            response=response,
+            criteria_text=criteria_text,
+            rubric_text=rubric_text,
+            use_cot=use_cot,
+        )
 
-        messages = [{"role": "system", "content": "You are a professional evaluation expert. Provide thorough, unbiased assessments."}, {"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional evaluation expert. Provide thorough, unbiased "
+                "assessments.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response_text = await self._make_api_call(messages)
 
-        return self._parse_evaluation_response(response_text, criteria, model=self.model, model_id=self.model_id, temperature=self.temperature, use_cot=use_cot)
+        return self._parse_evaluation_response(
+            response_text,
+            criteria,
+            model=self.model,
+            model_id=self.model_id,
+            temperature=self.temperature,
+            use_cot=use_cot,
+        )
 
     async def pairwise_comparison(
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> PairwiseResult:
         """Compare two responses using Watsonx.ai.
@@ -202,13 +240,15 @@ class WatsonxJudge(BaseJudge):
         Returns:
             Pairwise comparison result
         """
-        return await self._base_pairwise_comparison(response_a, response_b, criteria, context, position_bias_mitigation)
+        return await self._base_pairwise_comparison(
+            response_a, response_b, criteria, context, position_bias_mitigation
+        )
 
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "tournament",
     ) -> RankingResult:
         """Rank multiple responses using Watsonx.ai.
@@ -245,4 +285,6 @@ class WatsonxJudge(BaseJudge):
         Returns:
             ReferenceEvaluationResult containing score and analysis
         """
-        return await self._base_reference_evaluation(response, reference, evaluation_type, tolerance)
+        return await self._base_reference_evaluation(
+            response, reference, evaluation_type, tolerance
+        )

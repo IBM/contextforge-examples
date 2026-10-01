@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/storage/results_store.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,11 +7,12 @@ Results storage system for MCP Eval Server.
 """
 
 # Standard
-from pathlib import Path
 import sqlite3
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any
 
 import orjson
+
 
 class ResultsStore:
     """SQLite-based storage for evaluation results."""
@@ -30,8 +30,7 @@ class ResultsStore:
     def _init_database(self):
         """Initialize database schema."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS evaluation_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     results_id TEXT UNIQUE NOT NULL,
@@ -45,11 +44,9 @@ class ResultsStore:
                     detailed_results TEXT,
                     metadata TEXT
                 )
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS evaluation_steps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     results_id TEXT NOT NULL,
@@ -62,11 +59,9 @@ class ResultsStore:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (results_id) REFERENCES evaluation_results (results_id)
                 )
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS judge_evaluations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     judge_model TEXT NOT NULL,
@@ -79,28 +74,21 @@ class ResultsStore:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     execution_time REAL
                 )
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_results_suite ON evaluation_results(suite_id);
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_steps_results ON evaluation_steps(results_id);
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_judge_model ON judge_evaluations(judge_model);
-            """
-            )
+            """)
 
-    async def store_evaluation_result(self, result: Dict[str, Any]) -> str:
+    async def store_evaluation_result(self, result: dict[str, Any]) -> str:
         """Store complete evaluation result.
 
         Args:
@@ -155,7 +143,7 @@ class ResultsStore:
 
         return results_id
 
-    def _extract_score(self, result: Dict[str, Any]) -> Optional[float]:
+    def _extract_score(self, result: dict[str, Any]) -> float | None:
         """Extract numeric score from result.
 
         Args:
@@ -164,7 +152,15 @@ class ResultsStore:
         Returns:
             Optional[float]: Extracted score as float if found, None otherwise.
         """
-        score_fields = ["overall_score", "score", "clarity_score", "coherence_score", "factuality_score", "completion_rate", "accuracy"]
+        score_fields = [
+            "overall_score",
+            "score",
+            "clarity_score",
+            "coherence_score",
+            "factuality_score",
+            "completion_rate",
+            "accuracy",
+        ]
 
         for field in score_fields:
             if field in result:
@@ -174,7 +170,7 @@ class ResultsStore:
 
         return None
 
-    async def get_evaluation_result(self, results_id: str) -> Optional[Dict[str, Any]]:
+    async def get_evaluation_result(self, results_id: str) -> dict[str, Any] | None:
         """Retrieve evaluation result by ID.
 
         Args:
@@ -205,7 +201,9 @@ class ResultsStore:
 
             return result
 
-    async def list_evaluation_results(self, suite_id: Optional[str] = None, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    async def list_evaluation_results(
+        self, suite_id: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """List evaluation results with optional filtering.
 
         Args:
@@ -245,7 +243,14 @@ class ResultsStore:
 
             return [dict(row) for row in cursor.fetchall()]
 
-    async def store_judge_evaluation(self, judge_model: str, response_hash: str, criteria_hash: str, evaluation: Dict[str, Any], execution_time: float) -> None:
+    async def store_judge_evaluation(
+        self,
+        judge_model: str,
+        response_hash: str,
+        criteria_hash: str,
+        evaluation: dict[str, Any],
+        execution_time: float,
+    ) -> None:
         """Store judge evaluation result.
 
         Args:
@@ -275,15 +280,14 @@ class ResultsStore:
                 ),
             )
 
-    async def get_evaluation_statistics(self) -> Dict[str, Any]:
+    async def get_evaluation_statistics(self) -> dict[str, Any]:
         """Get overall evaluation statistics.
 
         Returns:
             Statistics dictionary
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                """
+            cursor = conn.execute("""
                 SELECT
                     COUNT(*) as total_evaluations,
                     AVG(overall_score) as avg_score,
@@ -292,14 +296,12 @@ class ResultsStore:
                     MIN(created_at) as first_evaluation,
                     MAX(created_at) as last_evaluation
                 FROM evaluation_results
-            """
-            )
+            """)
 
             stats = dict(cursor.fetchone())
 
             # Get suite statistics
-            cursor = conn.execute(
-                """
+            cursor = conn.execute("""
                 SELECT
                     suite_name,
                     COUNT(*) as count,
@@ -309,8 +311,7 @@ class ResultsStore:
                 GROUP BY suite_name
                 ORDER BY count DESC
                 LIMIT 10
-            """
-            )
+            """)
 
             stats["top_suites"] = [dict(row) for row in cursor.fetchall()]
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/tests/test_server.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -67,11 +66,23 @@ class TestRuleBasedEvaluation:
     async def test_basic_response_evaluation(self):
         """Test basic response evaluation with rule-based judge."""
 
-        criteria = [{"name": "length", "description": "Appropriate response length", "scale": "1-5", "weight": 1.0}]
+        criteria = [
+            {
+                "name": "length",
+                "description": "Appropriate response length",
+                "scale": "1-5",
+                "weight": 1.0,
+            }
+        ]
 
         rubric = {"criteria": criteria, "scale_description": {"1": "Very poor", "5": "Excellent"}}
 
-        result = await JUDGE_TOOLS.evaluate_response(response="This is a test response with adequate length for evaluation.", criteria=criteria, rubric=rubric, judge_model="rule-based")
+        result = await JUDGE_TOOLS.evaluate_response(
+            response="This is a test response with adequate length for evaluation.",
+            criteria=criteria,
+            rubric=rubric,
+            judge_model="rule-based",
+        )
 
         assert "scores" in result
         assert "reasoning" in result
@@ -86,10 +97,20 @@ class TestRuleBasedEvaluation:
     async def test_pairwise_comparison(self):
         """Test pairwise comparison functionality."""
 
-        criteria = [{"name": "quality", "description": "Overall response quality", "scale": "1-5", "weight": 1.0}]
+        criteria = [
+            {
+                "name": "quality",
+                "description": "Overall response quality",
+                "scale": "1-5",
+                "weight": 1.0,
+            }
+        ]
 
         result = await JUDGE_TOOLS.pairwise_comparison(
-            response_a="Short response.", response_b="This is a longer, more detailed response with better coverage.", criteria=criteria, judge_model="rule-based"
+            response_a="Short response.",
+            response_b="This is a longer, more detailed response with better coverage.",
+            criteria=criteria,
+            judge_model="rule-based",
         )
 
         assert "winner" in result
@@ -107,7 +128,11 @@ class TestPromptEvaluation:
     async def test_evaluate_clarity(self):
         """Test prompt clarity evaluation."""
 
-        result = await PROMPT_TOOLS.evaluate_clarity(prompt_text="Write a summary of the main points in this article.", target_model="gpt-4", judge_model="rule-based")
+        result = await PROMPT_TOOLS.evaluate_clarity(
+            prompt_text="Write a summary of the main points in this article.",
+            target_model="gpt-4",
+            judge_model="rule-based",
+        )
 
         assert "clarity_score" in result
         assert "rule_based_metrics" in result
@@ -122,7 +147,11 @@ class TestPromptEvaluation:
         result = await PROMPT_TOOLS.measure_completeness(
             prompt="Analyze the climate data",
             expected_components=["temperature", "precipitation", "trends"],
-            test_samples=["Temperature has increased over time", "Precipitation patterns show variation and temperature trends are rising", "Brief analysis"],
+            test_samples=[
+                "Temperature has increased over time",
+                "Precipitation patterns show variation and temperature trends are rising",
+                "Brief analysis",
+            ],
         )
 
         assert "completeness_score" in result
@@ -139,9 +168,18 @@ class TestAgentEvaluation:
     async def test_evaluate_tool_use(self):
         """Test agent tool usage evaluation."""
 
-        agent_trace = {"tool_calls": [{"tool_name": "search", "parameters": {"query": "test"}, "success": True}, {"tool_name": "analyzer", "parameters": {"data": "results"}, "success": True}]}
+        agent_trace = {
+            "tool_calls": [
+                {"tool_name": "search", "parameters": {"query": "test"}, "success": True},
+                {"tool_name": "analyzer", "parameters": {"data": "results"}, "success": True},
+            ]
+        }
 
-        result = await AGENT_TOOLS.evaluate_tool_use(agent_trace=agent_trace, expected_tools=["search", "analyzer"], tool_sequence_matters=True)
+        result = await AGENT_TOOLS.evaluate_tool_use(
+            agent_trace=agent_trace,
+            expected_tools=["search", "analyzer"],
+            tool_sequence_matters=True,
+        )
 
         assert "tool_accuracy" in result
         assert "sequence_score" in result
@@ -158,7 +196,11 @@ class TestQualityEvaluation:
     async def test_assess_toxicity(self):
         """Test toxicity assessment."""
 
-        result = await QUALITY_TOOLS.assess_toxicity(content="This is a normal, safe piece of text for testing.", toxicity_categories=["profanity", "hate_speech"], judge_model="rule-based")
+        result = await QUALITY_TOOLS.assess_toxicity(
+            content="This is a normal, safe piece of text for testing.",
+            toxicity_categories=["profanity", "hate_speech"],
+            judge_model="rule-based",
+        )
 
         assert "toxicity_scores" in result
         assert "safety_rating" in result
@@ -171,7 +213,9 @@ class TestQualityEvaluation:
         """Test coherence measurement."""
 
         result = await QUALITY_TOOLS.measure_coherence(
-            text="This is the first sentence. Furthermore, this connects to the previous idea. Therefore, the text flows logically.", judge_model="rule-based"
+            text="This is the first sentence. Furthermore, this connects to the previous idea. "
+            "Therefore, the text flows logically.",
+            judge_model="rule-based",
         )
 
         assert "coherence_score" in result
@@ -195,8 +239,18 @@ class TestWorkflowManagement:
                     "tool": "judge.evaluate_response",
                     "weight": 1.0,
                     "parameters": {
-                        "criteria": [{"name": "quality", "description": "Quality", "scale": "1-5", "weight": 1.0}],
-                        "rubric": {"criteria": [], "scale_description": {"1": "Poor", "5": "Excellent"}},
+                        "criteria": [
+                            {
+                                "name": "quality",
+                                "description": "Quality",
+                                "scale": "1-5",
+                                "weight": 1.0,
+                            }
+                        ],
+                        "rubric": {
+                            "criteria": [],
+                            "scale_description": {"1": "Poor", "5": "Excellent"},
+                        },
                     },
                 }
             ],

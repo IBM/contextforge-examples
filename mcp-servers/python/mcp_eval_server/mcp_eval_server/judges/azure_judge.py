@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/azure_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ Azure OpenAI judge implementation for LLM-as-a-judge evaluation.
 # Standard
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 # Third-Party
 from jinja2 import Environment, FileSystemLoader
@@ -23,7 +22,7 @@ from .openai_judge import OpenAIJudge
 class AzureOpenAIJudge(OpenAIJudge):
     """Judge implementation using Azure OpenAI Service."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:  # pylint: disable=super-init-not-called
+    def __init__(self, config: dict[str, Any]) -> None:  # pylint: disable=super-init-not-called
         """Initialize Azure OpenAI judge.
 
         Args:
@@ -41,7 +40,9 @@ class AzureOpenAIJudge(OpenAIJudge):
 
         # Set up Jinja2 template environment (from BaseJudge)
         template_dir = os.path.join(os.path.dirname(__file__), "templates")
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True
+        )
 
         # Azure-specific client setup
         api_key = os.getenv(config["api_key_env"])
@@ -50,7 +51,9 @@ class AzureOpenAIJudge(OpenAIJudge):
 
         api_base = os.getenv(config["api_base_env"])
         if not api_base:
-            raise ValueError(f"API base not found in environment variable: {config['api_base_env']}")
+            raise ValueError(
+                f"API base not found in environment variable: {config['api_base_env']}"
+            )
 
         # Support for deployment name from environment variable
         deployment_name = config.get("deployment_name")
@@ -62,7 +65,9 @@ class AzureOpenAIJudge(OpenAIJudge):
         if config.get("api_version_env"):
             api_version = os.getenv(config["api_version_env"]) or api_version
 
-        self.client = AsyncAzureOpenAI(azure_endpoint=api_base, api_key=api_key, api_version=api_version)
+        self.client = AsyncAzureOpenAI(
+            azure_endpoint=api_base, api_key=api_key, api_version=api_version
+        )
 
         # Use deployment name instead of model name for Azure
         self.model = deployment_name or config["model_name"]

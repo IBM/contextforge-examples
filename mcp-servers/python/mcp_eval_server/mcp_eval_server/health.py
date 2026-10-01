@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/health.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,6 @@ Health check HTTP server for MCP Evaluation Server.
 import logging
 import os
 import time
-from typing import Optional
 
 # Third-Party
 from aiohttp import web, web_request, web_response
@@ -33,8 +31,8 @@ class HealthCheckServer:
         self.port = port
         self.host = host
         self.app = web.Application()
-        self.runner: Optional[web.AppRunner] = None
-        self.site: Optional[web.TCPSite] = None
+        self.runner: web.AppRunner | None = None
+        self.site: web.TCPSite | None = None
 
         # Server state tracking
         self.start_time = time.time()
@@ -110,7 +108,13 @@ class HealthCheckServer:
         # Check if all critical components are ready
         all_ready = all(checks.values())
 
-        readiness_data = {"status": "ready" if all_ready else "not_ready", "timestamp": time.time(), "service": "mcp-eval-server", "version": "0.1.0", "checks": checks}
+        readiness_data = {
+            "status": "ready" if all_ready else "not_ready",
+            "timestamp": time.time(),
+            "service": "mcp-eval-server",
+            "version": "0.1.0",
+            "checks": checks,
+        }
 
         # Add details about what's not ready
         if not all_ready:
@@ -136,9 +140,20 @@ class HealthCheckServer:
             "timestamp": time.time(),
             "uptime_seconds": round(uptime, 2),
             "last_health_check": self.last_health_check,
-            "checks_since_start": max(0, int((time.time() - self.start_time) / 30)),  # Estimate based on typical 30s checks
-            "service_info": {"name": "mcp-eval-server", "version": "0.1.0", "port": self.port, "ready": self.is_ready},
-            "component_status": {"judge_tools": self.judge_tools_ready, "storage": self.storage_ready, "health_server": True},
+            "checks_since_start": max(
+                0, int((time.time() - self.start_time) / 30)
+            ),  # Estimate based on typical 30s checks
+            "service_info": {
+                "name": "mcp-eval-server",
+                "version": "0.1.0",
+                "port": self.port,
+                "ready": self.is_ready,
+            },
+            "component_status": {
+                "judge_tools": self.judge_tools_ready,
+                "storage": self.storage_ready,
+                "health_server": True,
+            },
         }
 
         return web.json_response(metrics_data, status=200)
@@ -155,9 +170,15 @@ class HealthCheckServer:
         info_data = {
             "service": "mcp-eval-server",
             "version": "0.1.0",
-            "description": "MCP server for comprehensive agent and prompt evaluation using LLM-as-a-judge techniques",
+            "description": "MCP server for comprehensive agent and prompt evaluation using "
+            "LLM-as-a-judge techniques",
             "status": "ready" if self.is_ready else "starting",
-            "endpoints": {"health": "/health (or /healthz)", "readiness": "/ready (or /readyz)", "metrics": "/metrics", "info": "/"},
+            "endpoints": {
+                "health": "/health (or /healthz)",
+                "readiness": "/ready (or /readyz)",
+                "metrics": "/metrics",
+                "info": "/",
+            },
             "uptime_seconds": round(time.time() - self.start_time, 2),
         }
 
@@ -172,7 +193,9 @@ class HealthCheckServer:
         try:
             logger.info(f"🏥 Starting health check server on {self.host}:{self.port}")
 
-            self.runner = web.AppRunner(self.app, access_log=None)  # Disable access logs to reduce noise
+            self.runner = web.AppRunner(
+                self.app, access_log=None
+            )  # Disable access logs to reduce noise
             await self.runner.setup()
 
             self.site = web.TCPSite(self.runner, self.host, self.port)
@@ -228,7 +251,7 @@ class HealthCheckServer:
 
 
 # Global health check server instance
-_health_server: Optional[HealthCheckServer] = None
+_health_server: HealthCheckServer | None = None
 
 
 def get_health_server() -> HealthCheckServer:

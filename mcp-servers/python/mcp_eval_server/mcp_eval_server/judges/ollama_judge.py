@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/ollama_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ OLLAMA judge implementation for LLM-as-a-judge evaluation.
 # Standard
 import asyncio
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     # Third-Party
@@ -36,7 +35,7 @@ from .base_judge import (
 class OllamaJudge(BaseJudge):
     """Judge implementation using OLLAMA."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize OLLAMA judge.
 
         Args:
@@ -48,7 +47,9 @@ class OllamaJudge(BaseJudge):
         super().__init__(config)
 
         if aiohttp is None:
-            raise ValueError("aiohttp library not installed. Please install with: pip install aiohttp")
+            raise ValueError(
+                "aiohttp library not installed. Please install with: pip install aiohttp"
+            )
 
         self.base_url = os.getenv(config["base_url_env"], "http://localhost:11434")
         self.model = config["model_name"]
@@ -114,7 +115,12 @@ class OllamaJudge(BaseJudge):
             return False
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def _make_api_call(self, messages: List[Dict[str, str]], temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> str:
+    async def _make_api_call(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
         """Make API call with retry logic.
 
         Args:
@@ -147,17 +153,19 @@ class OllamaJudge(BaseJudge):
                     result = await response.json()
                     return result.get("message", {}).get("content", "")
                 error_text = await response.text()
-                raise Exception(f"OLLAMA API call failed with status {response.status}: {error_text}")
+                raise Exception(
+                    f"OLLAMA API call failed with status {response.status}: {error_text}"
+                )
 
         except aiohttp.ClientError as e:
-            raise Exception(f"OLLAMA API call failed: {e}")
+            raise Exception(f"OLLAMA API call failed: {e}") from e
 
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
     ) -> EvaluationResult:
         """Evaluate a single response using OLLAMA.
@@ -176,20 +184,36 @@ class OllamaJudge(BaseJudge):
         criteria_text = self._format_criteria(criteria)
         rubric_text = self._format_rubric(rubric)
 
-        prompt = self._render_template("evaluation", context=context, response=response, criteria_text=criteria_text, rubric_text=rubric_text, use_cot=use_cot)
+        prompt = self._render_template(
+            "evaluation",
+            context=context,
+            response=response,
+            criteria_text=criteria_text,
+            rubric_text=rubric_text,
+            use_cot=use_cot,
+        )
 
-        messages = [{"role": "system", "content": "You are a professional evaluation expert. Provide thorough, unbiased assessments."}, {"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional evaluation expert. Provide thorough, unbiased "
+                "assessments.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response_text = await self._make_api_call(messages)
 
-        return self._parse_evaluation_response(response_text, criteria, model=self.model, temperature=self.temperature, use_cot=use_cot)
+        return self._parse_evaluation_response(
+            response_text, criteria, model=self.model, temperature=self.temperature, use_cot=use_cot
+        )
 
     async def pairwise_comparison(
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> PairwiseResult:
         """Compare two responses using OLLAMA.
@@ -204,13 +228,15 @@ class OllamaJudge(BaseJudge):
         Returns:
             Pairwise comparison result
         """
-        return await self._base_pairwise_comparison(response_a, response_b, criteria, context, position_bias_mitigation)
+        return await self._base_pairwise_comparison(
+            response_a, response_b, criteria, context, position_bias_mitigation
+        )
 
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "tournament",
     ) -> RankingResult:
         """Rank multiple responses using OLLAMA.
@@ -247,4 +273,6 @@ class OllamaJudge(BaseJudge):
         Returns:
             ReferenceEvaluationResult containing score and analysis
         """
-        return await self._base_reference_evaluation(response, reference, evaluation_type, tolerance)
+        return await self._base_reference_evaluation(
+            response, reference, evaluation_type, tolerance
+        )

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/workflow_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -9,10 +8,10 @@ MCP tools for evaluation workflow management.
 
 # Standard
 import asyncio
-from datetime import datetime, timezone
 import statistics
-from typing import Any, Dict, List, Optional
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 # Local
 from .agent_tools import AgentTools
@@ -24,7 +23,13 @@ from .quality_tools import QualityTools
 class WorkflowTools:
     """Tools for evaluation workflow and suite management."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None, prompt_tools: Optional[PromptTools] = None, agent_tools: Optional[AgentTools] = None, quality_tools: Optional[QualityTools] = None):
+    def __init__(
+        self,
+        judge_tools: JudgeTools | None = None,
+        prompt_tools: PromptTools | None = None,
+        agent_tools: AgentTools | None = None,
+        quality_tools: QualityTools | None = None,
+    ):
         """Initialize workflow tools.
 
         Args:
@@ -45,11 +50,11 @@ class WorkflowTools:
     async def create_evaluation_suite(
         self,
         suite_name: str,
-        evaluation_steps: List[Dict[str, Any]],
-        success_thresholds: Dict[str, float],
-        weights: Optional[Dict[str, float]] = None,
-        description: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        evaluation_steps: list[dict[str, Any]],
+        success_thresholds: dict[str, float],
+        weights: dict[str, float] | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
         """Define comprehensive evaluation pipeline.
 
         Args:
@@ -90,15 +95,20 @@ class WorkflowTools:
             "evaluation_steps": evaluation_steps,
             "success_thresholds": success_thresholds,
             "weights": weights,
-            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "created_at": datetime.now(tz=UTC).isoformat(),
             "version": "1.0",
         }
 
         self.evaluation_suites[suite_id] = suite_config
 
-        return {"suite_id": suite_id, "configuration": suite_config, "total_steps": len(evaluation_steps), "estimated_duration": self._estimate_duration(evaluation_steps)}
+        return {
+            "suite_id": suite_id,
+            "configuration": suite_config,
+            "total_steps": len(evaluation_steps),
+            "estimated_duration": self._estimate_duration(evaluation_steps),
+        }
 
-    def _get_valid_tools(self) -> List[str]:
+    def _get_valid_tools(self) -> list[str]:
         """Get list of valid evaluation tools.
 
         Returns:
@@ -126,7 +136,7 @@ class WorkflowTools:
             "quality.assess_toxicity",
         ]
 
-    def _estimate_duration(self, evaluation_steps: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _estimate_duration(self, evaluation_steps: list[dict[str, Any]]) -> dict[str, Any]:
         """Estimate evaluation duration.
 
         Args:
@@ -157,16 +167,22 @@ class WorkflowTools:
 
         total_seconds = sum(tool_durations.get(step.get("tool"), 5) for step in evaluation_steps)
 
-        return {"estimated_seconds": total_seconds, "estimated_minutes": round(total_seconds / 60, 1), "complexity": "low" if total_seconds < 30 else "medium" if total_seconds < 120 else "high"}
+        return {
+            "estimated_seconds": total_seconds,
+            "estimated_minutes": round(total_seconds / 60, 1),
+            "complexity": (
+                "low" if total_seconds < 30 else "medium" if total_seconds < 120 else "high"
+            ),
+        }
 
     async def run_evaluation(
         self,
         suite_id: str,
-        test_data: Dict[str, Any],
+        test_data: dict[str, Any],
         parallel_execution: bool = True,
         save_results: bool = True,
         max_concurrent: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute evaluation suite on data.
 
         Args:
@@ -188,23 +204,27 @@ class WorkflowTools:
         suite_config = self.evaluation_suites[suite_id]
         evaluation_steps = suite_config["evaluation_steps"]
 
-        start_time = datetime.now(tz=timezone.utc)
+        start_time = datetime.now(tz=UTC)
         results_id = str(uuid.uuid4())
 
         # Run evaluation steps
         if parallel_execution:
-            step_results = await self._run_steps_parallel(evaluation_steps, test_data, max_concurrent)
+            step_results = await self._run_steps_parallel(
+                evaluation_steps, test_data, max_concurrent
+            )
         else:
             step_results = await self._run_steps_sequential(evaluation_steps, test_data)
 
-        end_time = datetime.now(tz=timezone.utc)
+        end_time = datetime.now(tz=UTC)
         duration = (end_time - start_time).total_seconds()
 
         # Calculate overall score
         overall_score = self._calculate_overall_score(step_results, suite_config["weights"])
 
         # Check success criteria
-        pass_fail_status = self._check_success_criteria(step_results, suite_config["success_thresholds"])
+        pass_fail_status = self._check_success_criteria(
+            step_results, suite_config["success_thresholds"]
+        )
 
         # Generate detailed report
         detailed_results = {
@@ -231,7 +251,9 @@ class WorkflowTools:
 
         return detailed_results
 
-    async def _run_steps_parallel(self, steps: List[Dict[str, Any]], test_data: Dict[str, Any], max_concurrent: int) -> List[Dict[str, Any]]:
+    async def _run_steps_parallel(
+        self, steps: list[dict[str, Any]], test_data: dict[str, Any], max_concurrent: int
+    ) -> list[dict[str, Any]]:
         """Run evaluation steps in parallel.
 
         Args:
@@ -245,14 +267,16 @@ class WorkflowTools:
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def run_single_step(step: Dict[str, Any]) -> Dict[str, Any]:
+        async def run_single_step(step: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 return await self._execute_evaluation_step(step, test_data)
 
         tasks = [run_single_step(step) for step in steps]
         return await asyncio.gather(*tasks)
 
-    async def _run_steps_sequential(self, steps: List[Dict[str, Any]], test_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _run_steps_sequential(
+        self, steps: list[dict[str, Any]], test_data: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Run evaluation steps sequentially.
 
         Args:
@@ -270,7 +294,9 @@ class WorkflowTools:
 
         return results
 
-    async def _execute_evaluation_step(self, step: Dict[str, Any], test_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_evaluation_step(
+        self, step: dict[str, Any], test_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a single evaluation step.
 
         Args:
@@ -290,7 +316,7 @@ class WorkflowTools:
         # Merge test_data with step parameters
         combined_params = {**test_data, **params}
 
-        start_time = datetime.now(tz=timezone.utc)
+        start_time = datetime.now(tz=UTC)
 
         try:
             # Route to appropriate tool
@@ -313,12 +339,20 @@ class WorkflowTools:
             success = False
             error = str(e)
 
-        end_time = datetime.now(tz=timezone.utc)
+        end_time = datetime.now(tz=UTC)
         duration = (end_time - start_time).total_seconds()
 
-        return {"tool": tool, "success": success, "result": result, "error": error, "execution_time": duration, "parameters_used": combined_params, "weight": step.get("weight", 1.0)}
+        return {
+            "tool": tool,
+            "success": success,
+            "result": result,
+            "error": error,
+            "execution_time": duration,
+            "parameters_used": combined_params,
+            "weight": step.get("weight", 1.0),
+        }
 
-    async def _execute_judge_tool(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_judge_tool(self, tool: str, params: dict[str, Any]) -> dict[str, Any]:
         """Execute judge tool.
 
         Args:
@@ -342,7 +376,7 @@ class WorkflowTools:
             return await self.judge_tools.evaluate_with_reference(**params)
         raise ValueError(f"Unknown judge tool: {tool}")
 
-    async def _execute_prompt_tool(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_prompt_tool(self, tool: str, params: dict[str, Any]) -> dict[str, Any]:
         """Execute prompt tool.
 
         Args:
@@ -366,7 +400,7 @@ class WorkflowTools:
             return await self.prompt_tools.assess_relevance(**params)
         raise ValueError(f"Unknown prompt tool: {tool}")
 
-    async def _execute_agent_tool(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_agent_tool(self, tool: str, params: dict[str, Any]) -> dict[str, Any]:
         """Execute agent tool.
 
         Args:
@@ -390,7 +424,7 @@ class WorkflowTools:
             return await self.agent_tools.benchmark_performance(**params)
         raise ValueError(f"Unknown agent tool: {tool}")
 
-    async def _execute_quality_tool(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_quality_tool(self, tool: str, params: dict[str, Any]) -> dict[str, Any]:
         """Execute quality tool.
 
         Args:
@@ -412,7 +446,9 @@ class WorkflowTools:
             return await self.quality_tools.assess_toxicity(**params)
         raise ValueError(f"Unknown quality tool: {tool}")
 
-    def _calculate_overall_score(self, step_results: List[Dict[str, Any]], weights: Dict[str, float]) -> float:
+    def _calculate_overall_score(
+        self, step_results: list[dict[str, Any]], weights: dict[str, float]
+    ) -> float:
         """Calculate weighted overall score.
 
         Args:
@@ -441,7 +477,7 @@ class WorkflowTools:
 
         return total_weighted_score / total_weight if total_weight > 0 else 0.0
 
-    def _extract_score_from_result(self, result: Dict[str, Any]) -> float:
+    def _extract_score_from_result(self, result: dict[str, Any]) -> float:
         """Extract numeric score from evaluation result.
 
         Args:
@@ -452,7 +488,16 @@ class WorkflowTools:
         """
 
         # Try common score field names
-        score_fields = ["overall_score", "score", "clarity_score", "coherence_score", "factuality_score", "completion_rate", "accuracy", "efficiency"]
+        score_fields = [
+            "overall_score",
+            "score",
+            "clarity_score",
+            "coherence_score",
+            "factuality_score",
+            "completion_rate",
+            "accuracy",
+            "efficiency",
+        ]
 
         for field in score_fields:
             if field in result:
@@ -469,7 +514,9 @@ class WorkflowTools:
         # Default fallback
         return 0.5
 
-    def _check_success_criteria(self, step_results: List[Dict[str, Any]], thresholds: Dict[str, float]) -> Dict[str, Any]:
+    def _check_success_criteria(
+        self, step_results: list[dict[str, Any]], thresholds: dict[str, float]
+    ) -> dict[str, Any]:
         """Check if evaluation meets success criteria.
 
         Args:
@@ -486,11 +533,15 @@ class WorkflowTools:
         for criterion, threshold in thresholds.items():
             if criterion == "overall":
                 # Check overall score
-                overall_score = self._calculate_overall_score(step_results, {step["tool"]: 1.0 for step in step_results})
+                overall_score = self._calculate_overall_score(
+                    step_results, {step["tool"]: 1.0 for step in step_results}
+                )
                 passed = overall_score >= threshold
             else:
                 # Check specific tool result
-                tool_result = next((step for step in step_results if step["tool"] == criterion), None)
+                tool_result = next(
+                    (step for step in step_results if step["tool"] == criterion), None
+                )
                 if tool_result and tool_result["success"]:
                     score = self._extract_score_from_result(tool_result["result"])
                     passed = score >= threshold
@@ -504,9 +555,14 @@ class WorkflowTools:
 
         all_passed = len(failed_criteria) == 0
 
-        return {"passed": all_passed, "passed_criteria": passed_criteria, "failed_criteria": failed_criteria, "success_rate": len(passed_criteria) / len(thresholds) if thresholds else 1.0}
+        return {
+            "passed": all_passed,
+            "passed_criteria": passed_criteria,
+            "failed_criteria": failed_criteria,
+            "success_rate": len(passed_criteria) / len(thresholds) if thresholds else 1.0,
+        }
 
-    def _summarize_test_data(self, test_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _summarize_test_data(self, test_data: dict[str, Any]) -> dict[str, Any]:
         """Summarize test data for reporting.
 
         Args:
@@ -520,17 +576,34 @@ class WorkflowTools:
 
         for key, value in test_data.items():
             if isinstance(value, str):
-                summary[key] = {"type": "string", "length": len(value), "preview": value[:100] + "..." if len(value) > 100 else value}
+                summary[key] = {
+                    "type": "string",
+                    "length": len(value),
+                    "preview": value[:100] + "..." if len(value) > 100 else value,
+                }
             elif isinstance(value, list):
-                summary[key] = {"type": "list", "length": len(value), "item_types": list(set(type(item).__name__ for item in value))}
+                summary[key] = {
+                    "type": "list",
+                    "length": len(value),
+                    "item_types": list(set(type(item).__name__ for item in value)),
+                }
             elif isinstance(value, dict):
-                summary[key] = {"type": "dict", "keys": len(value), "key_names": list(value.keys())[:10]}  # First 10 keys
+                summary[key] = {
+                    "type": "dict",
+                    "keys": len(value),
+                    "key_names": list(value.keys())[:10],
+                }  # First 10 keys
             else:
                 summary[key] = {"type": type(value).__name__, "value": str(value)[:100]}
 
         return summary
 
-    def _generate_result_summary(self, step_results: List[Dict[str, Any]], overall_score: float, pass_fail_status: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_result_summary(
+        self,
+        step_results: list[dict[str, Any]],
+        overall_score: float,
+        pass_fail_status: dict[str, Any],
+    ) -> dict[str, Any]:
         """Generate a summary of evaluation results.
 
         Args:
@@ -562,7 +635,9 @@ class WorkflowTools:
             "average_step_time": total_time / len(step_results) if step_results else 0,
             "slowest_step": {"tool": slowest_step["tool"], "time": slowest_step["execution_time"]},
             "fastest_step": {"tool": fastest_step["tool"], "time": fastest_step["execution_time"]},
-            "performance_grade": self._get_performance_grade(overall_score, pass_fail_status["success_rate"]),
+            "performance_grade": self._get_performance_grade(
+                overall_score, pass_fail_status["success_rate"]
+            ),
         }
 
     def _get_performance_grade(self, overall_score: float, success_rate: float) -> str:
@@ -590,10 +665,10 @@ class WorkflowTools:
 
     async def compare_evaluations(
         self,
-        evaluation_ids: List[str],
+        evaluation_ids: list[str],
         comparison_type: str = "improvement",
         significance_test: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compare results across multiple evaluation runs.
 
         Args:
@@ -629,7 +704,9 @@ class WorkflowTools:
         trend_analysis = self._analyze_trends(evaluations, comparison_type)
 
         # Generate recommendations
-        recommendations = self._generate_comparison_recommendations(comparison_matrix, trend_analysis, statistical_analysis)
+        recommendations = self._generate_comparison_recommendations(
+            comparison_matrix, trend_analysis, statistical_analysis
+        )
 
         return {
             "comparison_matrix": comparison_matrix,
@@ -641,7 +718,7 @@ class WorkflowTools:
             "comparison_summary": self._summarize_comparison(comparison_matrix, trend_analysis),
         }
 
-    def _create_comparison_matrix(self, evaluations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _create_comparison_matrix(self, evaluations: list[dict[str, Any]]) -> dict[str, Any]:
         """Create side-by-side comparison matrix.
 
         Args:
@@ -655,8 +732,12 @@ class WorkflowTools:
             "evaluation_ids": [eval_data["results_id"] for eval_data in evaluations],
             "suite_names": [eval_data["suite_name"] for eval_data in evaluations],
             "overall_scores": [eval_data["overall_score"] for eval_data in evaluations],
-            "pass_fail_status": [eval_data["pass_fail_status"]["passed"] for eval_data in evaluations],
-            "execution_times": [eval_data["execution_info"]["duration_seconds"] for eval_data in evaluations],
+            "pass_fail_status": [
+                eval_data["pass_fail_status"]["passed"] for eval_data in evaluations
+            ],
+            "execution_times": [
+                eval_data["execution_info"]["duration_seconds"] for eval_data in evaluations
+            ],
             "step_comparisons": {},
         }
 
@@ -669,7 +750,9 @@ class WorkflowTools:
         for tool in all_tools:
             tool_scores = []
             for evaluation in evaluations:
-                step_result = next((step for step in evaluation["step_results"] if step["tool"] == tool), None)
+                step_result = next(
+                    (step for step in evaluation["step_results"] if step["tool"] == tool), None
+                )
                 if step_result and step_result["success"]:
                     score = self._extract_score_from_result(step_result["result"])
                     tool_scores.append(score)
@@ -680,7 +763,9 @@ class WorkflowTools:
 
         return matrix
 
-    def _perform_statistical_analysis(self, evaluations: List[Dict[str, Any]], comparison_type: str) -> Dict[str, Any]:  # pylint: disable=unused-argument
+    def _perform_statistical_analysis(
+        self, evaluations: list[dict[str, Any]], comparison_type: str
+    ) -> dict[str, Any]:  # pylint: disable=unused-argument
         """Perform statistical significance testing.
 
         Args:
@@ -744,7 +829,9 @@ class WorkflowTools:
             return f"Statistically significant {direction} detected"
         return f"Moderate {direction} detected"
 
-    def _analyze_trends(self, evaluations: List[Dict[str, Any]], comparison_type: str) -> Dict[str, Any]:  # pylint: disable=unused-argument
+    def _analyze_trends(
+        self, evaluations: list[dict[str, Any]], comparison_type: str
+    ) -> dict[str, Any]:  # pylint: disable=unused-argument
         """Analyze performance trends over time.
 
         Args:
@@ -786,10 +873,15 @@ class WorkflowTools:
             "score_range": {"min": min(scores), "max": max(scores)},
             "volatility": volatility,
             "consistency": "high" if volatility < 0.1 else "medium" if volatility < 0.2 else "low",
-            "scores_over_time": list(zip(timestamps, scores)),
+            "scores_over_time": list(zip(timestamps, scores, strict=False)),
         }
 
-    def _generate_comparison_recommendations(self, comparison_matrix: Dict[str, Any], trend_analysis: Dict[str, Any], statistical_analysis: Dict[str, Any]) -> List[str]:
+    def _generate_comparison_recommendations(
+        self,
+        comparison_matrix: dict[str, Any],
+        trend_analysis: dict[str, Any],
+        statistical_analysis: dict[str, Any],
+    ) -> list[str]:
         """Generate recommendations based on comparison.
 
         Args:
@@ -810,7 +902,9 @@ class WorkflowTools:
             previous_score = scores[-2]
 
             if latest_score > previous_score + 0.05:
-                recommendations.append("Performance improvement detected - maintain current approach")
+                recommendations.append(
+                    "Performance improvement detected - maintain current approach"
+                )
             elif latest_score < previous_score - 0.05:
                 recommendations.append("Performance decline detected - investigate changes")
 
@@ -828,11 +922,15 @@ class WorkflowTools:
 
         # Statistical significance recommendations
         if statistical_analysis.get("is_significant"):
-            recommendations.append("Statistically significant changes detected - validate with additional testing")
+            recommendations.append(
+                "Statistically significant changes detected - validate with additional testing"
+            )
 
         return recommendations
 
-    def _summarize_comparison(self, comparison_matrix: Dict[str, Any], trend_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def _summarize_comparison(
+        self, comparison_matrix: dict[str, Any], trend_analysis: dict[str, Any]
+    ) -> dict[str, Any]:
         """Summarize comparison results.
 
         Args:
@@ -855,7 +953,7 @@ class WorkflowTools:
             "total_evaluations": len(scores),
         }
 
-    def get_evaluation_suite(self, suite_id: str) -> Optional[Dict[str, Any]]:
+    def get_evaluation_suite(self, suite_id: str) -> dict[str, Any] | None:
         """Get evaluation suite configuration.
 
         Args:
@@ -866,7 +964,7 @@ class WorkflowTools:
         """
         return self.evaluation_suites.get(suite_id)
 
-    def get_evaluation_result(self, results_id: str) -> Optional[Dict[str, Any]]:
+    def get_evaluation_result(self, results_id: str) -> dict[str, Any] | None:
         """Get evaluation results.
 
         Args:
@@ -877,18 +975,24 @@ class WorkflowTools:
         """
         return self.evaluation_results.get(results_id)
 
-    def list_evaluation_suites(self) -> List[Dict[str, Any]]:
+    def list_evaluation_suites(self) -> list[dict[str, Any]]:
         """List all evaluation suites.
 
         Returns:
             List[Dict[str, Any]]: List of suite summaries with basic information.
         """
         return [
-            {"suite_id": suite_id, "name": config["name"], "description": config["description"], "created_at": config["created_at"], "steps": len(config["evaluation_steps"])}
+            {
+                "suite_id": suite_id,
+                "name": config["name"],
+                "description": config["description"],
+                "created_at": config["created_at"],
+                "steps": len(config["evaluation_steps"]),
+            }
             for suite_id, config in self.evaluation_suites.items()
         ]
 
-    def list_evaluation_results(self) -> List[Dict[str, Any]]:
+    def list_evaluation_results(self) -> list[dict[str, Any]]:
         """List all evaluation results.
 
         Returns:

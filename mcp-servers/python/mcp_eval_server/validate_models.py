@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/validate_models.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -13,7 +12,6 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Dict
 
 # Add current directory to path for imports
 sys.path.insert(0, ".")
@@ -30,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def check_environment_variables() -> Dict[str, bool]:
+def check_environment_variables() -> dict[str, bool]:
     """Check for required environment variables.
 
     Returns:
@@ -218,17 +216,20 @@ async def main():
     # Provider-specific recommendations
     if not env_vars.get("OPENAI_API_KEY"):
         logger.info(
-            "   💡 For OpenAI models: export OPENAI_API_KEY='<your-key>'"  # pragma: allowlist secret
+            "   💡 For OpenAI models: export "
+            "OPENAI_API_KEY='<your-key>'"  # pragma: allowlist secret
         )  # pragma: allowlist secret
 
     if not env_vars.get("ANTHROPIC_API_KEY"):
         logger.info(
-            "   💡 For Anthropic models: export ANTHROPIC_API_KEY='<your-key>'"  # pragma: allowlist secret
+            "   💡 For Anthropic models: export "
+            "ANTHROPIC_API_KEY='<your-key>'"  # pragma: allowlist secret
         )  # pragma: allowlist secret
 
     if not env_vars.get("AZURE_OPENAI_API_KEY"):
         logger.info(
-            "   💡 For Azure OpenAI: export AZURE_OPENAI_API_KEY='<your-key>' and AZURE_OPENAI_ENDPOINT='<your-key>'"  # pragma: allowlist secret
+            "   💡 For Azure OpenAI: export AZURE_OPENAI_API_KEY='<your-key>' and "
+            "AZURE_OPENAI_ENDPOINT='<your-key>'"  # pragma: allowlist secret
         )
 
     # Rule-based judge always works

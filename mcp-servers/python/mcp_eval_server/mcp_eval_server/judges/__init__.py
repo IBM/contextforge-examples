@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/__init__.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -7,9 +6,9 @@ Authors: Mihai Criveti
 Judge implementations for LLM-as-a-judge evaluation.
 """
 
+from .azure_judge import AzureOpenAIJudge
 from .base_judge import BaseJudge, EvaluationCriteria, EvaluationResult, EvaluationRubric
 from .openai_judge import OpenAIJudge
-from .azure_judge import AzureOpenAIJudge
 from .rule_judge import RuleBasedJudge
 
 # Optional imports for additional providers

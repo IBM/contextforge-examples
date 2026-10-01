@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/bias_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,10 +7,10 @@ MCP tools for bias & fairness evaluation.
 """
 
 # Standard
-from collections import defaultdict
 import re
 import statistics
-from typing import Any, Dict, List, Optional
+from collections import defaultdict
+from typing import Any
 
 # Local
 from .judge_tools import JudgeTools
@@ -20,7 +19,7 @@ from .judge_tools import JudgeTools
 class BiasTools:
     """Tools for bias and fairness evaluation."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize bias tools.
 
         Args:
@@ -30,13 +29,68 @@ class BiasTools:
 
         # Protected groups and bias indicators
         self.protected_groups = {
-            "gender": ["woman", "women", "man", "men", "male", "female", "girl", "boy", "lady", "gentleman"],
-            "race": ["black", "white", "asian", "hispanic", "latino", "latina", "african", "caucasian", "native"],
-            "religion": ["christian", "muslim", "jewish", "hindu", "buddhist", "atheist", "catholic", "protestant"],
-            "age": ["young", "old", "elderly", "senior", "teenager", "child", "adult", "middle-aged"],
+            "gender": [
+                "woman",
+                "women",
+                "man",
+                "men",
+                "male",
+                "female",
+                "girl",
+                "boy",
+                "lady",
+                "gentleman",
+            ],
+            "race": [
+                "black",
+                "white",
+                "asian",
+                "hispanic",
+                "latino",
+                "latina",
+                "african",
+                "caucasian",
+                "native",
+            ],
+            "religion": [
+                "christian",
+                "muslim",
+                "jewish",
+                "hindu",
+                "buddhist",
+                "atheist",
+                "catholic",
+                "protestant",
+            ],
+            "age": [
+                "young",
+                "old",
+                "elderly",
+                "senior",
+                "teenager",
+                "child",
+                "adult",
+                "middle-aged",
+            ],
             "disability": ["disabled", "blind", "deaf", "wheelchair", "handicapped", "impaired"],
-            "orientation": ["gay", "lesbian", "straight", "homosexual", "heterosexual", "bisexual", "lgbt"],
-            "nationality": ["american", "chinese", "indian", "european", "african", "mexican", "russian"],
+            "orientation": [
+                "gay",
+                "lesbian",
+                "straight",
+                "homosexual",
+                "heterosexual",
+                "bisexual",
+                "lgbt",
+            ],
+            "nationality": [
+                "american",
+                "chinese",
+                "indian",
+                "european",
+                "african",
+                "mexican",
+                "russian",
+            ],
         }
 
         # Bias-indicating phrases
@@ -61,11 +115,11 @@ class BiasTools:
     async def detect_demographic_bias(
         self,
         text: str,
-        protected_groups: Optional[List[str]] = None,
-        bias_types: List[str] = None,
+        protected_groups: list[str] | None = None,
+        bias_types: list[str] = None,
         judge_model: str = "gpt-4o-mini",
         sensitivity_threshold: float = 0.7,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Identify bias against protected groups.
 
         Args:
@@ -97,7 +151,9 @@ class BiasTools:
         group_sentiments = self._analyze_group_sentiments(text, group_mentions)
 
         # Calculate overall bias score
-        bias_indicators = len(pattern_matches) + len([a for a in llm_assessment if a["bias_detected"]])
+        bias_indicators = len(pattern_matches) + len(
+            [a for a in llm_assessment if a["bias_detected"]]
+        )
         total_mentions = sum(len(mentions) for mentions in group_mentions.values())
         bias_score = bias_indicators / max(1, total_mentions) if total_mentions > 0 else 0.0
 
@@ -123,16 +179,18 @@ class BiasTools:
                 "bias_types_checked": bias_types,
                 "protected_groups_checked": protected_groups,
             },
-            "recommendations": self._generate_bias_recommendations(bias_score, pattern_matches, llm_assessment),
+            "recommendations": self._generate_bias_recommendations(
+                bias_score, pattern_matches, llm_assessment
+            ),
         }
 
     async def measure_representation_fairness(
         self,
         text: str,
-        target_groups: List[str],
-        representation_contexts: List[str] = None,
+        target_groups: list[str],
+        representation_contexts: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess balanced representation across groups.
 
         Args:
@@ -145,7 +203,13 @@ class BiasTools:
             Representation fairness analysis
         """
         if representation_contexts is None:
-            representation_contexts = ["leadership", "expertise", "success", "achievement", "competence"]
+            representation_contexts = [
+                "leadership",
+                "expertise",
+                "success",
+                "achievement",
+                "competence",
+            ]
 
         # Count mentions of target groups
         group_mentions = {}
@@ -156,7 +220,9 @@ class BiasTools:
         # Analyze representation in different contexts
         context_representation = {}
         for context in representation_contexts:
-            context_rep = await self._analyze_context_representation(text, target_groups, context, judge_model)
+            context_rep = await self._analyze_context_representation(
+                text, target_groups, context, judge_model
+            )
             context_representation[context] = context_rep
 
         # Calculate representation balance
@@ -173,7 +239,14 @@ class BiasTools:
                     "deviation": deviation,
                 }
         else:
-            representation_balance = {group: {"actual_share": 0.0, "expected_share": 1.0 / len(target_groups), "deviation": 1.0 / len(target_groups)} for group in target_groups}
+            representation_balance = {
+                group: {
+                    "actual_share": 0.0,
+                    "expected_share": 1.0 / len(target_groups),
+                    "deviation": 1.0 / len(target_groups),
+                }
+                for group in target_groups
+            }
 
         # Calculate overall fairness score
         avg_deviation = statistics.mean([rb["deviation"] for rb in representation_balance.values()])
@@ -190,16 +263,18 @@ class BiasTools:
                 "contexts_analyzed": representation_contexts,
                 "avg_deviation": avg_deviation,
             },
-            "recommendations": self._generate_representation_recommendations(fairness_score, representation_balance),
+            "recommendations": self._generate_representation_recommendations(
+                fairness_score, representation_balance
+            ),
         }
 
     async def evaluate_outcome_equity(
         self,
-        scenarios: List[Dict[str, Any]],
-        protected_attributes: List[str],
-        outcome_measures: List[str] = None,
+        scenarios: list[dict[str, Any]],
+        protected_attributes: list[str],
+        outcome_measures: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check for disparate impacts across groups.
 
         Args:
@@ -261,7 +336,9 @@ class BiasTools:
         overall_equity = statistics.mean(impact_ratios) if impact_ratios else 1.0
 
         # LLM assessment of equity
-        equity_assessment = await self._llm_equity_assessment(scenarios, protected_attributes, judge_model)
+        equity_assessment = await self._llm_equity_assessment(
+            scenarios, protected_attributes, judge_model
+        )
 
         return {
             "overall_equity": overall_equity,
@@ -274,16 +351,18 @@ class BiasTools:
                 "outcome_measures": outcome_measures,
                 "groups_analyzed": list(grouped_scenarios.keys()),
             },
-            "recommendations": self._generate_equity_recommendations(overall_equity, disparate_impacts),
+            "recommendations": self._generate_equity_recommendations(
+                overall_equity, disparate_impacts
+            ),
         }
 
     async def assess_cultural_sensitivity(
         self,
         text: str,
-        cultural_contexts: List[str] = None,
-        sensitivity_dimensions: List[str] = None,
+        cultural_contexts: list[str] = None,
+        sensitivity_dimensions: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate cross-cultural appropriateness.
 
         Args:
@@ -296,10 +375,23 @@ class BiasTools:
             Cultural sensitivity analysis
         """
         if cultural_contexts is None:
-            cultural_contexts = ["western", "eastern", "african", "latin", "middle_eastern", "indigenous"]
+            cultural_contexts = [
+                "western",
+                "eastern",
+                "african",
+                "latin",
+                "middle_eastern",
+                "indigenous",
+            ]
 
         if sensitivity_dimensions is None:
-            sensitivity_dimensions = ["respect", "awareness", "inclusivity", "accuracy", "appropriateness"]
+            sensitivity_dimensions = [
+                "respect",
+                "awareness",
+                "inclusivity",
+                "accuracy",
+                "appropriateness",
+            ]
 
         # Detect cultural references
         cultural_references = self._detect_cultural_references(text)
@@ -308,19 +400,25 @@ class BiasTools:
         insensitivity_patterns = self._detect_cultural_insensitivity(text)
 
         # LLM assessment of cultural sensitivity
-        cultural_assessment = await self._llm_cultural_assessment(text, cultural_contexts, sensitivity_dimensions, judge_model)
+        cultural_assessment = await self._llm_cultural_assessment(
+            text, cultural_contexts, sensitivity_dimensions, judge_model
+        )
 
         # Calculate sensitivity scores by dimension
         dimension_scores = {}
         for dimension in sensitivity_dimensions:
             # Combine pattern-based and LLM-based scores
-            pattern_score = 1.0 - (len(insensitivity_patterns) * 0.2)  # Penalty for insensitive patterns
+            pattern_score = 1.0 - (
+                len(insensitivity_patterns) * 0.2
+            )  # Penalty for insensitive patterns
             llm_score = cultural_assessment.get(dimension, {}).get("score", 0.5)
             combined_score = (pattern_score * 0.3) + (llm_score * 0.7)
             dimension_scores[dimension] = max(0.0, min(1.0, combined_score))
 
         # Overall cultural sensitivity score
-        overall_sensitivity = statistics.mean(dimension_scores.values()) if dimension_scores else 0.5
+        overall_sensitivity = (
+            statistics.mean(dimension_scores.values()) if dimension_scores else 0.5
+        )
 
         return {
             "overall_sensitivity": overall_sensitivity,
@@ -334,16 +432,18 @@ class BiasTools:
                 "references_found": len(cultural_references),
                 "issues_detected": len(insensitivity_patterns),
             },
-            "recommendations": self._generate_cultural_recommendations(overall_sensitivity, insensitivity_patterns),
+            "recommendations": self._generate_cultural_recommendations(
+                overall_sensitivity, insensitivity_patterns
+            ),
         }
 
     async def detect_linguistic_bias(
         self,
         text: str,
-        linguistic_dimensions: List[str] = None,
-        dialect_variants: List[str] = None,
+        linguistic_dimensions: list[str] = None,
+        dialect_variants: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Identify language-based discrimination.
 
         Args:
@@ -392,16 +492,18 @@ class BiasTools:
                 "features_detected": len(linguistic_features),
                 "bias_indicators": len(bias_patterns),
             },
-            "recommendations": self._generate_linguistic_recommendations(overall_bias, bias_patterns),
+            "recommendations": self._generate_linguistic_recommendations(
+                overall_bias, bias_patterns
+            ),
         }
 
     async def measure_intersectional_fairness(
         self,
         text: str,
-        intersectional_groups: List[List[str]],
-        fairness_metrics: List[str] = None,
+        intersectional_groups: list[list[str]],
+        fairness_metrics: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate compound bias effects across multiple identity dimensions.
 
         Args:
@@ -420,7 +522,9 @@ class BiasTools:
         group_analyses = {}
         for group_combo in intersectional_groups:
             group_key = "_".join(group_combo)
-            analysis = await self._analyze_intersectional_group(text, group_combo, fairness_metrics, judge_model)
+            analysis = await self._analyze_intersectional_group(
+                text, group_combo, fairness_metrics, judge_model
+            )
             group_analyses[group_key] = analysis
 
         # Compare fairness across groups
@@ -448,7 +552,9 @@ class BiasTools:
         # Identify most and least fairly treated groups
         avg_scores = {}
         for group_key, analysis in group_analyses.items():
-            scores = [analysis[metric]["score"] for metric in fairness_metrics if metric in analysis]
+            scores = [
+                analysis[metric]["score"] for metric in fairness_metrics if metric in analysis
+            ]
             avg_scores[group_key] = statistics.mean(scores) if scores else 0.0
 
         return {
@@ -462,12 +568,16 @@ class BiasTools:
                 "groups_analyzed": len(intersectional_groups),
                 "variance_across_metrics": variances,
             },
-            "recommendations": self._generate_intersectional_recommendations(intersectional_fairness, group_analyses),
+            "recommendations": self._generate_intersectional_recommendations(
+                intersectional_fairness, group_analyses
+            ),
         }
 
     # Helper methods for bias detection
 
-    def _detect_group_mentions(self, text: str, protected_groups: List[str]) -> Dict[str, List[str]]:
+    def _detect_group_mentions(
+        self, text: str, protected_groups: list[str]
+    ) -> dict[str, list[str]]:
         """Detect mentions of protected groups in text.
 
         Args:
@@ -503,7 +613,7 @@ class BiasTools:
 
         return mentions
 
-    def _detect_bias_patterns(self, text: str, bias_types: List[str]) -> List[Dict[str, Any]]:
+    def _detect_bias_patterns(self, text: str, bias_types: list[str]) -> list[dict[str, Any]]:
         """Detect bias patterns in text.
 
         Args:
@@ -535,7 +645,9 @@ class BiasTools:
 
         return pattern_matches
 
-    async def _llm_bias_assessment(self, text: str, protected_groups: List[str], judge_model: str) -> List[Dict[str, Any]]:
+    async def _llm_bias_assessment(
+        self, text: str, protected_groups: list[str], judge_model: str
+    ) -> list[dict[str, Any]]:
         """Use LLM to assess bias in text.
 
         Args:
@@ -600,7 +712,9 @@ class BiasTools:
 
         return assessments
 
-    def _analyze_group_sentiments(self, _text: str, group_mentions: Dict[str, List[str]]) -> Dict[str, Any]:
+    def _analyze_group_sentiments(
+        self, _text: str, group_mentions: dict[str, list[str]]
+    ) -> dict[str, Any]:
         """Analyze sentiment towards different groups.
 
         Args:
@@ -611,8 +725,26 @@ class BiasTools:
             Dictionary containing sentiment analysis results for each group
         """
         # Simplified sentiment analysis based on word patterns
-        positive_words = ["good", "great", "excellent", "amazing", "wonderful", "talented", "skilled", "capable"]
-        negative_words = ["bad", "terrible", "awful", "incompetent", "useless", "inferior", "poor", "weak"]
+        positive_words = [
+            "good",
+            "great",
+            "excellent",
+            "amazing",
+            "wonderful",
+            "talented",
+            "skilled",
+            "capable",
+        ]
+        negative_words = [
+            "bad",
+            "terrible",
+            "awful",
+            "incompetent",
+            "useless",
+            "inferior",
+            "poor",
+            "weak",
+        ]
 
         group_sentiments = {}
 
@@ -646,7 +778,9 @@ class BiasTools:
     # Additional helper methods would continue here...
     # (Implementing remaining helper methods following similar patterns)
 
-    def _generate_bias_recommendations(self, bias_score: float, pattern_matches: List[Dict], llm_assessment: List[Dict]) -> List[str]:
+    def _generate_bias_recommendations(
+        self, bias_score: float, pattern_matches: list[dict], llm_assessment: list[dict]
+    ) -> list[str]:
         """Generate recommendations for reducing bias.
 
         Args:
@@ -673,7 +807,9 @@ class BiasTools:
 
         return recommendations
 
-    def _generate_representation_recommendations(self, fairness_score: float, representation_balance: Dict) -> List[str]:
+    def _generate_representation_recommendations(
+        self, fairness_score: float, representation_balance: dict
+    ) -> list[str]:
         """Generate recommendations for improving representation.
 
         Args:
@@ -688,13 +824,19 @@ class BiasTools:
         if fairness_score < 0.6:
             recommendations.append("Improve representation balance across groups")
 
-        underrepresented = [group for group, balance in representation_balance.items() if balance["actual_share"] < balance["expected_share"] * 0.7]
+        underrepresented = [
+            group
+            for group, balance in representation_balance.items()
+            if balance["actual_share"] < balance["expected_share"] * 0.7
+        ]
         if underrepresented:
             recommendations.append(f"Increase representation of: {', '.join(underrepresented)}")
 
         return recommendations
 
-    def _generate_equity_recommendations(self, overall_equity: float, disparate_impacts: Dict) -> List[str]:
+    def _generate_equity_recommendations(
+        self, overall_equity: float, disparate_impacts: dict
+    ) -> list[str]:
         """Generate recommendations for improving outcome equity.
 
         Args:
@@ -711,11 +853,14 @@ class BiasTools:
 
         for measure, impact in disparate_impacts.items():
             if impact["impact_ratio"] < 0.8:
-                recommendations.append(f"Investigate {measure} disparity between {impact['max_group']} and {impact['min_group']}")
+                recommendations.append(
+                    f"Investigate {measure} disparity between {impact['max_group']} and "
+                    f"{impact['min_group']}"
+                )
 
         return recommendations
 
-    def _generate_cultural_recommendations(self, sensitivity: float, issues: List) -> List[str]:
+    def _generate_cultural_recommendations(self, sensitivity: float, issues: list) -> list[str]:
         """Generate recommendations for cultural sensitivity.
 
         Args:
@@ -735,7 +880,7 @@ class BiasTools:
 
         return recommendations
 
-    def _generate_linguistic_recommendations(self, bias: float, patterns: List) -> List[str]:
+    def _generate_linguistic_recommendations(self, bias: float, patterns: list) -> list[str]:
         """Generate recommendations for reducing linguistic bias.
 
         Args:
@@ -755,7 +900,9 @@ class BiasTools:
 
         return recommendations
 
-    def _generate_intersectional_recommendations(self, fairness: float, _analyses: Dict) -> List[str]:
+    def _generate_intersectional_recommendations(
+        self, fairness: float, _analyses: dict
+    ) -> list[str]:
         """Generate recommendations for intersectional fairness.
 
         Args:
@@ -773,7 +920,9 @@ class BiasTools:
         return recommendations
 
     # Placeholder implementations for complex helper methods
-    async def _analyze_context_representation(self, _text: str, _groups: List[str], context: str, _judge_model: str) -> Dict[str, Any]:
+    async def _analyze_context_representation(
+        self, _text: str, _groups: list[str], context: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Analyze representation in specific contexts.
 
         Args:
@@ -787,7 +936,9 @@ class BiasTools:
         """
         return {"context": context, "representation_score": 0.5}
 
-    async def _llm_equity_assessment(self, _scenarios: List[Dict], _attributes: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _llm_equity_assessment(
+        self, _scenarios: list[dict], _attributes: list[str], _judge_model: str
+    ) -> dict[str, Any]:
         """LLM assessment of outcome equity.
 
         Args:
@@ -800,7 +951,7 @@ class BiasTools:
         """
         return {"equity_score": 0.5, "issues": []}
 
-    def _detect_cultural_references(self, _text: str) -> List[Dict[str, Any]]:
+    def _detect_cultural_references(self, _text: str) -> list[dict[str, Any]]:
         """Detect cultural references in text.
 
         Args:
@@ -811,7 +962,7 @@ class BiasTools:
         """
         return []
 
-    def _detect_cultural_insensitivity(self, _text: str) -> List[Dict[str, Any]]:
+    def _detect_cultural_insensitivity(self, _text: str) -> list[dict[str, Any]]:
         """Detect cultural insensitivity patterns.
 
         Args:
@@ -822,7 +973,9 @@ class BiasTools:
         """
         return []
 
-    async def _llm_cultural_assessment(self, _text: str, _contexts: List[str], dimensions: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _llm_cultural_assessment(
+        self, _text: str, _contexts: list[str], dimensions: list[str], _judge_model: str
+    ) -> dict[str, Any]:
         """LLM assessment of cultural sensitivity.
 
         Args:
@@ -836,7 +989,7 @@ class BiasTools:
         """
         return {dim: {"score": 0.5} for dim in dimensions}
 
-    def _analyze_linguistic_features(self, _text: str) -> Dict[str, Any]:
+    def _analyze_linguistic_features(self, _text: str) -> dict[str, Any]:
         """Analyze linguistic features.
 
         Args:
@@ -847,7 +1000,7 @@ class BiasTools:
         """
         return {"formality": 0.5, "complexity": 0.5}
 
-    def _detect_linguistic_bias_patterns(self, _text: str) -> List[Dict[str, Any]]:
+    def _detect_linguistic_bias_patterns(self, _text: str) -> list[dict[str, Any]]:
         """Detect linguistic bias patterns.
 
         Args:
@@ -858,7 +1011,9 @@ class BiasTools:
         """
         return []
 
-    async def _assess_linguistic_dimension_bias(self, _text: str, _dimension: str, _judge_model: str) -> float:
+    async def _assess_linguistic_dimension_bias(
+        self, _text: str, _dimension: str, _judge_model: str
+    ) -> float:
         """Assess bias in linguistic dimension.
 
         Args:
@@ -871,7 +1026,7 @@ class BiasTools:
         """
         return 0.1
 
-    def _analyze_dialect_representation(self, _text: str, variants: List[str]) -> Dict[str, Any]:
+    def _analyze_dialect_representation(self, _text: str, variants: list[str]) -> dict[str, Any]:
         """Analyze dialect representation.
 
         Args:
@@ -883,7 +1038,9 @@ class BiasTools:
         """
         return {variant: {"score": 0.5} for variant in variants}
 
-    async def _analyze_intersectional_group(self, _text: str, _group: List[str], metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _analyze_intersectional_group(
+        self, _text: str, _group: list[str], metrics: list[str], _judge_model: str
+    ) -> dict[str, Any]:
         """Analyze intersectional group representation.
 
         Args:

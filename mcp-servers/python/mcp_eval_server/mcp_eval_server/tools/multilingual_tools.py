@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/multilingual_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,10 +7,10 @@ MCP tools for multilingual evaluation.
 """
 
 # Standard
-from collections import Counter, defaultdict
 import re
 import statistics
-from typing import Any, Dict, List, Optional
+from collections import Counter, defaultdict
+from typing import Any
 
 # Local
 from .judge_tools import JudgeTools
@@ -20,7 +19,7 @@ from .judge_tools import JudgeTools
 class MultilingualTools:
     """Tools for multilingual and cross-cultural evaluation."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize multilingual tools.
 
         Args:
@@ -79,9 +78,9 @@ class MultilingualTools:
         translated_text: str,
         source_language: str,
         target_language: str,
-        quality_dimensions: List[str] = None,
+        quality_dimensions: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess translation accuracy and quality.
 
         Args:
@@ -96,25 +95,44 @@ class MultilingualTools:
             Translation quality analysis
         """
         if quality_dimensions is None:
-            quality_dimensions = ["accuracy", "fluency", "completeness", "cultural_adaptation", "terminology"]
+            quality_dimensions = [
+                "accuracy",
+                "fluency",
+                "completeness",
+                "cultural_adaptation",
+                "terminology",
+            ]
 
         # Basic linguistic analysis
-        linguistic_analysis = self._analyze_translation_linguistics(source_text, translated_text, source_language, target_language)
+        linguistic_analysis = self._analyze_translation_linguistics(
+            source_text, translated_text, source_language, target_language
+        )
 
         # LLM-based quality assessment
         quality_scores = {}
         for dimension in quality_dimensions:
-            score = await self._assess_translation_dimension(source_text, translated_text, dimension, source_language, target_language, judge_model)
+            score = await self._assess_translation_dimension(
+                source_text,
+                translated_text,
+                dimension,
+                source_language,
+                target_language,
+                judge_model,
+            )
             quality_scores[dimension] = score
 
         # Detect translation errors
-        translation_errors = self._detect_translation_errors(source_text, translated_text, source_language, target_language)
+        translation_errors = self._detect_translation_errors(
+            source_text, translated_text, source_language, target_language
+        )
 
         # Calculate overall quality
         overall_quality = statistics.mean(quality_scores.values()) if quality_scores else 0.0
 
         # Assess preservation of meaning
-        meaning_preservation = await self._assess_meaning_preservation(source_text, translated_text, judge_model)
+        meaning_preservation = await self._assess_meaning_preservation(
+            source_text, translated_text, judge_model
+        )
 
         return {
             "overall_quality": overall_quality,
@@ -131,17 +149,19 @@ class MultilingualTools:
                 "quality_dimensions": quality_dimensions,
                 "error_count": len(translation_errors),
             },
-            "recommendations": self._generate_translation_recommendations(overall_quality, translation_errors, quality_scores),
+            "recommendations": self._generate_translation_recommendations(
+                overall_quality, translation_errors, quality_scores
+            ),
         }
 
     async def measure_cross_lingual_consistency(
         self,
         base_text: str,
         base_language: str,
-        translated_versions: Dict[str, str],
-        consistency_metrics: List[str] = None,
+        translated_versions: dict[str, str],
+        consistency_metrics: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check consistency across languages.
 
         Args:
@@ -155,12 +175,24 @@ class MultilingualTools:
             Cross-lingual consistency analysis
         """
         if consistency_metrics is None:
-            consistency_metrics = ["semantic_consistency", "factual_consistency", "tone_consistency", "style_consistency"]
+            consistency_metrics = [
+                "semantic_consistency",
+                "factual_consistency",
+                "tone_consistency",
+                "style_consistency",
+            ]
 
         # Analyze consistency between each translation and base
         language_comparisons = {}
         for target_lang, translated_text in translated_versions.items():
-            comparison = await self._compare_cross_lingual_texts(base_text, translated_text, base_language, target_lang, consistency_metrics, judge_model)
+            comparison = await self._compare_cross_lingual_texts(
+                base_text,
+                translated_text,
+                base_language,
+                target_lang,
+                consistency_metrics,
+                judge_model,
+            )
             language_comparisons[target_lang] = comparison
 
         # Analyze consistency between all translation pairs
@@ -169,14 +201,29 @@ class MultilingualTools:
         for i, lang1 in enumerate(languages):
             for lang2 in languages[i + 1 :]:
                 pair_key = f"{lang1}_{lang2}"
-                comparison = await self._compare_translation_pair(translated_versions[lang1], translated_versions[lang2], lang1, lang2, consistency_metrics, judge_model)
+                comparison = await self._compare_translation_pair(
+                    translated_versions[lang1],
+                    translated_versions[lang2],
+                    lang1,
+                    lang2,
+                    consistency_metrics,
+                    judge_model,
+                )
                 pairwise_comparisons[pair_key] = comparison
 
         # Calculate overall consistency metrics
         metric_consistency = {}
         for metric in consistency_metrics:
-            base_scores = [comp["consistency_scores"][metric] for comp in language_comparisons.values() if metric in comp["consistency_scores"]]
-            pair_scores = [comp["consistency_scores"][metric] for comp in pairwise_comparisons.values() if metric in comp["consistency_scores"]]
+            base_scores = [
+                comp["consistency_scores"][metric]
+                for comp in language_comparisons.values()
+                if metric in comp["consistency_scores"]
+            ]
+            pair_scores = [
+                comp["consistency_scores"][metric]
+                for comp in pairwise_comparisons.values()
+                if metric in comp["consistency_scores"]
+            ]
 
             all_scores = base_scores + pair_scores
             if all_scores:
@@ -201,19 +248,25 @@ class MultilingualTools:
                 "target_languages": list(translated_versions.keys()),
                 "total_languages": len(translated_versions) + 1,  # +1 for base
                 "consistency_metrics": consistency_metrics,
-                "least_consistent_metric": min(metric_consistency.items(), key=lambda x: x[1]["mean_consistency"])[0] if metric_consistency else None,
+                "least_consistent_metric": (
+                    min(metric_consistency.items(), key=lambda x: x[1]["mean_consistency"])[0]
+                    if metric_consistency
+                    else None
+                ),
             },
-            "recommendations": self._generate_consistency_recommendations(overall_consistency, metric_consistency, language_comparisons),
+            "recommendations": self._generate_consistency_recommendations(
+                overall_consistency, metric_consistency, language_comparisons
+            ),
         }
 
     async def assess_cultural_adaptation(
         self,
         text: str,
         target_culture: str,
-        cultural_dimensions: List[str] = None,
-        reference_text: Optional[str] = None,
+        cultural_dimensions: list[str] = None,
+        reference_text: str | None = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate cultural appropriateness and adaptation.
 
         Args:
@@ -227,7 +280,14 @@ class MultilingualTools:
             Cultural adaptation analysis
         """
         if cultural_dimensions is None:
-            cultural_dimensions = ["formality", "directness", "context_level", "hierarchy", "collectivism", "time_orientation"]
+            cultural_dimensions = [
+                "formality",
+                "directness",
+                "context_level",
+                "hierarchy",
+                "collectivism",
+                "time_orientation",
+            ]
 
         # Analyze cultural markers in text
         cultural_markers = self._analyze_cultural_markers(text)
@@ -235,7 +295,9 @@ class MultilingualTools:
         # Assess each cultural dimension
         dimension_scores = {}
         for dimension in cultural_dimensions:
-            score = await self._assess_cultural_dimension(text, target_culture, dimension, judge_model)
+            score = await self._assess_cultural_dimension(
+                text, target_culture, dimension, judge_model
+            )
             dimension_scores[dimension] = score
 
         # Detect cultural mismatches
@@ -244,7 +306,9 @@ class MultilingualTools:
         # Compare with reference if provided
         reference_comparison = None
         if reference_text:
-            reference_comparison = await self._compare_cultural_adaptation(text, reference_text, target_culture, judge_model)
+            reference_comparison = await self._compare_cultural_adaptation(
+                text, reference_text, target_culture, judge_model
+            )
 
         # Overall cultural adaptation score
         overall_adaptation = statistics.mean(dimension_scores.values()) if dimension_scores else 0.0
@@ -259,10 +323,20 @@ class MultilingualTools:
                 "target_culture": target_culture,
                 "cultural_dimensions": cultural_dimensions,
                 "adaptation_issues": len(cultural_mismatches),
-                "weakest_dimension": min(dimension_scores.items(), key=lambda x: x[1])[0] if dimension_scores else None,
-                "strongest_dimension": max(dimension_scores.items(), key=lambda x: x[1])[0] if dimension_scores else None,
+                "weakest_dimension": (
+                    min(dimension_scores.items(), key=lambda x: x[1])[0]
+                    if dimension_scores
+                    else None
+                ),
+                "strongest_dimension": (
+                    max(dimension_scores.items(), key=lambda x: x[1])[0]
+                    if dimension_scores
+                    else None
+                ),
             },
-            "recommendations": self._generate_cultural_recommendations(overall_adaptation, cultural_mismatches, dimension_scores),
+            "recommendations": self._generate_cultural_recommendations(
+                overall_adaptation, cultural_mismatches, dimension_scores
+            ),
         }
 
     async def detect_language_mixing(
@@ -272,7 +346,7 @@ class MultilingualTools:
         mixing_tolerance: float = 0.05,
         detection_method: str = "pattern_based",
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Identify inappropriate code-switching or language mixing.
 
         Args:
@@ -301,7 +375,9 @@ class MultilingualTools:
 
         # LLM assessment of mixing appropriateness
         if detection_method == "llm_based":
-            llm_assessment = await self._llm_assess_language_mixing(text, expected_language, judge_model)
+            llm_assessment = await self._llm_assess_language_mixing(
+                text, expected_language, judge_model
+            )
         else:
             llm_assessment = {"appropriateness": 0.5, "reasoning": "Pattern-based analysis only"}
 
@@ -318,14 +394,25 @@ class MultilingualTools:
                 "mixing_tolerance": mixing_tolerance,
                 "detection_method": detection_method,
                 "total_switches": len(code_switching),
-                "most_mixed_language": max(detected_languages.items(), key=lambda x: x[1] if x[0] != expected_language else 0)[0] if len(detected_languages) > 1 else None,
+                "most_mixed_language": (
+                    max(
+                        detected_languages.items(),
+                        key=lambda x: x[1] if x[0] != expected_language else 0,
+                    )[0]
+                    if len(detected_languages) > 1
+                    else None
+                ),
             },
-            "recommendations": self._generate_mixing_recommendations(mixing_appropriate, other_languages_ratio, mixing_classification),
+            "recommendations": self._generate_mixing_recommendations(
+                mixing_appropriate, other_languages_ratio, mixing_classification
+            ),
         }
 
     # Helper methods for multilingual evaluation
 
-    def _analyze_translation_linguistics(self, source_text: str, translated_text: str, _source_lang: str, _target_lang: str) -> Dict[str, Any]:
+    def _analyze_translation_linguistics(
+        self, source_text: str, translated_text: str, _source_lang: str, _target_lang: str
+    ) -> dict[str, Any]:
         """Analyze linguistic features of translation.
 
         Args:
@@ -338,10 +425,20 @@ class MultilingualTools:
             Dictionary containing linguistic analysis metrics
         """
         return {
-            "word_count_ratio": len(translated_text.split()) / len(source_text.split()) if source_text.split() else 0,
+            "word_count_ratio": (
+                len(translated_text.split()) / len(source_text.split())
+                if source_text.split()
+                else 0
+            ),
             "character_count_ratio": len(translated_text) / len(source_text) if source_text else 0,
-            "sentence_count_ratio": len(re.split(r"[.!?]+", translated_text)) / len(re.split(r"[.!?]+", source_text)) if re.split(r"[.!?]+", source_text) else 0,
-            "punctuation_preserved": self._check_punctuation_preservation(source_text, translated_text),
+            "sentence_count_ratio": (
+                len(re.split(r"[.!?]+", translated_text)) / len(re.split(r"[.!?]+", source_text))
+                if re.split(r"[.!?]+", source_text)
+                else 0
+            ),
+            "punctuation_preserved": self._check_punctuation_preservation(
+                source_text, translated_text
+            ),
         }
 
     def _check_punctuation_preservation(self, source: str, translation: str) -> float:
@@ -364,7 +461,15 @@ class MultilingualTools:
         punct_ratio = len(trans_punct) / len(source_punct)
         return min(1.0, punct_ratio) if punct_ratio <= 1.5 else max(0.0, 2.0 - punct_ratio)
 
-    async def _assess_translation_dimension(self, source: str, translation: str, dimension: str, source_lang: str, target_lang: str, judge_model: str) -> float:
+    async def _assess_translation_dimension(
+        self,
+        source: str,
+        translation: str,
+        dimension: str,
+        source_lang: str,
+        target_lang: str,
+        judge_model: str,
+    ) -> float:
         """Assess a specific dimension of translation quality.
 
         Args:
@@ -381,7 +486,8 @@ class MultilingualTools:
         criteria = [
             {
                 "name": f"translation_{dimension}",
-                "description": f"Rate the {dimension} of this translation from {source_lang} to {target_lang}",
+                "description": f"Rate the {dimension} of this translation from {source_lang} to "
+                f"{target_lang}",
                 "scale": "1-5",
                 "weight": 1.0,
             }
@@ -400,7 +506,8 @@ class MultilingualTools:
 
         try:
             result = await self.judge_tools.evaluate_response(
-                response=f"Source ({source_lang}): {source}\nTranslation ({target_lang}): {translation}",
+                response=f"Source ({source_lang}): {source}\nTranslation ({target_lang}): "
+                f"{translation}",
                 criteria=criteria,
                 rubric=rubric,
                 judge_model=judge_model,
@@ -410,7 +517,9 @@ class MultilingualTools:
         except Exception:
             return 0.5  # Default score if assessment fails
 
-    def _detect_translation_errors(self, source: str, translation: str, _source_lang: str, _target_lang: str) -> List[Dict[str, Any]]:
+    def _detect_translation_errors(
+        self, source: str, translation: str, _source_lang: str, _target_lang: str
+    ) -> list[dict[str, Any]]:
         """Detect common translation errors.
 
         Args:
@@ -442,13 +551,19 @@ class MultilingualTools:
         words = translation.split()
         if len(words) > 10:
             word_counts = Counter(words)
-            repeated_words = [word for word, count in word_counts.items() if count > len(words) * 0.1]
+            repeated_words = [
+                word for word, count in word_counts.items() if count > len(words) * 0.1
+            ]
             if repeated_words:
-                errors.append({"type": "excessive_repetition", "severity": "medium", "words": repeated_words})
+                errors.append(
+                    {"type": "excessive_repetition", "severity": "medium", "words": repeated_words}
+                )
 
         return errors
 
-    async def _assess_meaning_preservation(self, source: str, translation: str, judge_model: str) -> Dict[str, Any]:
+    async def _assess_meaning_preservation(
+        self, source: str, translation: str, judge_model: str
+    ) -> dict[str, Any]:
         """Assess how well meaning is preserved in translation.
 
         Args:
@@ -492,7 +607,7 @@ class MultilingualTools:
         except Exception:
             return {"preservation_score": 0.5, "reasoning": {"error": "Assessment failed"}}
 
-    def _detect_languages_in_text(self, text: str) -> Dict[str, float]:
+    def _detect_languages_in_text(self, text: str) -> dict[str, float]:
         """Detect languages present in text using pattern matching.
 
         Args:
@@ -522,7 +637,7 @@ class MultilingualTools:
             return {lang: count / total_detected for lang, count in detected.items()}
         return {"unknown": 1.0}
 
-    def _analyze_code_switching(self, text: str, primary_language: str) -> List[Dict[str, Any]]:
+    def _analyze_code_switching(self, text: str, primary_language: str) -> list[dict[str, Any]]:
         """Analyze code-switching patterns in text.
 
         Args:
@@ -571,7 +686,7 @@ class MultilingualTools:
                     return language
         return "unknown"
 
-    def _classify_language_mixing(self, switches: List[Dict], _primary_lang: str) -> Dict[str, Any]:
+    def _classify_language_mixing(self, switches: list[dict], _primary_lang: str) -> dict[str, Any]:
         """Classify types of language mixing.
 
         Args:
@@ -585,7 +700,10 @@ class MultilingualTools:
             return {"type": "monolingual", "switches": 0}
 
         switch_count = len(switches)
-        languages_involved = set([switch["from_language"] for switch in switches] + [switch["to_language"] for switch in switches])
+        languages_involved = set(
+            [switch["from_language"] for switch in switches]
+            + [switch["to_language"] for switch in switches]
+        )
 
         if switch_count <= 2:
             mixing_type = "minimal"
@@ -601,7 +719,7 @@ class MultilingualTools:
             "switch_density": switch_count / 100,  # switches per 100 words (approximate)
         }
 
-    def _analyze_cultural_markers(self, text: str) -> Dict[str, Any]:
+    def _analyze_cultural_markers(self, text: str) -> dict[str, Any]:
         """Analyze cultural markers in text.
 
         Args:
@@ -622,7 +740,7 @@ class MultilingualTools:
 
         return markers
 
-    def _detect_cultural_mismatches(self, text: str, target_culture: str) -> List[Dict[str, Any]]:
+    def _detect_cultural_mismatches(self, text: str, target_culture: str) -> list[dict[str, Any]]:
         """Detect cultural mismatches for target culture.
 
         Args:
@@ -652,7 +770,9 @@ class MultilingualTools:
 
     # Recommendation generation methods
 
-    def _generate_translation_recommendations(self, quality: float, errors: List, scores: Dict) -> List[str]:
+    def _generate_translation_recommendations(
+        self, quality: float, errors: list, scores: dict
+    ) -> list[str]:
         """Generate recommendations for improving translation quality.
 
         Args:
@@ -678,7 +798,9 @@ class MultilingualTools:
 
         return recommendations
 
-    def _generate_consistency_recommendations(self, consistency: float, metrics: Dict, _comparisons: Dict) -> List[str]:
+    def _generate_consistency_recommendations(
+        self, consistency: float, metrics: dict, _comparisons: dict
+    ) -> list[str]:
         """Generate recommendations for improving cross-lingual consistency.
 
         Args:
@@ -694,13 +816,17 @@ class MultilingualTools:
         if consistency < 0.8:
             recommendations.append("Improve cross-lingual consistency")
 
-        inconsistent_metrics = [metric for metric, data in metrics.items() if data["mean_consistency"] < 0.7]
+        inconsistent_metrics = [
+            metric for metric, data in metrics.items() if data["mean_consistency"] < 0.7
+        ]
         if inconsistent_metrics:
             recommendations.append(f"Focus on consistency in: {', '.join(inconsistent_metrics)}")
 
         return recommendations
 
-    def _generate_cultural_recommendations(self, adaptation: float, mismatches: List, scores: Dict) -> List[str]:
+    def _generate_cultural_recommendations(
+        self, adaptation: float, mismatches: list, scores: dict
+    ) -> list[str]:
         """Generate recommendations for improving cultural adaptation.
 
         Args:
@@ -721,11 +847,15 @@ class MultilingualTools:
 
         weak_dimensions = [dim for dim, score in scores.items() if score < 0.6]
         if weak_dimensions:
-            recommendations.append(f"Strengthen cultural adaptation in: {', '.join(weak_dimensions)}")
+            recommendations.append(
+                f"Strengthen cultural adaptation in: {', '.join(weak_dimensions)}"
+            )
 
         return recommendations
 
-    def _generate_mixing_recommendations(self, appropriate: bool, ratio: float, classification: Dict) -> List[str]:
+    def _generate_mixing_recommendations(
+        self, appropriate: bool, ratio: float, classification: dict
+    ) -> list[str]:
         """Generate recommendations for language mixing.
 
         Args:
@@ -750,7 +880,15 @@ class MultilingualTools:
         return recommendations
 
     # Additional placeholder methods for complex operations
-    async def _compare_cross_lingual_texts(self, _base: str, _target: str, base_lang: str, target_lang: str, metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _compare_cross_lingual_texts(
+        self,
+        _base: str,
+        _target: str,
+        base_lang: str,
+        target_lang: str,
+        metrics: list[str],
+        _judge_model: str,
+    ) -> dict[str, Any]:
         """Compare texts across languages for consistency.
 
         Args:
@@ -774,7 +912,15 @@ class MultilingualTools:
             "languages": f"{base_lang}-{target_lang}",
         }
 
-    async def _compare_translation_pair(self, _text1: str, _text2: str, _lang1: str, _lang2: str, metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _compare_translation_pair(
+        self,
+        _text1: str,
+        _text2: str,
+        _lang1: str,
+        _lang2: str,
+        metrics: list[str],
+        _judge_model: str,
+    ) -> dict[str, Any]:
         """Compare a pair of translations for consistency.
 
         Args:
@@ -794,7 +940,9 @@ class MultilingualTools:
 
         return {"consistency_scores": consistency_scores}
 
-    async def _assess_cultural_dimension(self, _text: str, _culture: str, _dimension: str, _judge_model: str) -> float:
+    async def _assess_cultural_dimension(
+        self, _text: str, _culture: str, _dimension: str, _judge_model: str
+    ) -> float:
         """Assess cultural adaptation for specific dimension.
 
         Args:
@@ -808,7 +956,9 @@ class MultilingualTools:
         """
         return 0.7  # Placeholder
 
-    async def _compare_cultural_adaptation(self, _text: str, _reference: str, _culture: str, _judge_model: str) -> Dict[str, Any]:
+    async def _compare_cultural_adaptation(
+        self, _text: str, _reference: str, _culture: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Compare cultural adaptation with reference.
 
         Args:
@@ -822,7 +972,9 @@ class MultilingualTools:
         """
         return {"comparison_score": 0.8, "differences": []}
 
-    async def _llm_assess_language_mixing(self, _text: str, _expected_lang: str, _judge_model: str) -> Dict[str, Any]:
+    async def _llm_assess_language_mixing(
+        self, _text: str, _expected_lang: str, _judge_model: str
+    ) -> dict[str, Any]:
         """LLM assessment of language mixing appropriateness.
 
         Args:

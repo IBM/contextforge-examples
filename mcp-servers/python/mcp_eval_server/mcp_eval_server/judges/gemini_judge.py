@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/gemini_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ Google Gemini judge implementation for LLM-as-a-judge evaluation.
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     # Third-Party
@@ -38,7 +37,7 @@ from .base_judge import (
 class GeminiJudge(BaseJudge):
     """Judge implementation using Google Gemini API."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize Gemini judge.
 
         Args:
@@ -51,7 +50,10 @@ class GeminiJudge(BaseJudge):
         self.logger = logging.getLogger(__name__)
 
         if genai is None:
-            raise ValueError("Google Generative AI library not installed. Please install with: pip install google-generativeai")
+            raise ValueError(
+                "Google Generative AI library not installed. Please install with: pip install "
+                "google-generativeai"
+            )
 
         api_key = os.getenv(config["api_key_env"])
         if not api_key:
@@ -74,7 +76,12 @@ class GeminiJudge(BaseJudge):
         self.logger.debug(f"🔧 Initialized Gemini judge: {self.model_name}")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def _make_api_call(self, messages: List[Dict[str, str]], temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> str:
+    async def _make_api_call(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
         """Make API call with retry logic.
 
         Args:
@@ -89,7 +96,10 @@ class GeminiJudge(BaseJudge):
             Exception: If Gemini API call fails
         """
         self.logger.debug(f"🔗 Making Gemini API call to {self.model_name}")
-        self.logger.debug(f"   Messages: {len(messages)}, Temperature: {temperature or self.temperature}, Max tokens: {max_tokens or self.max_tokens}")
+        self.logger.debug(
+            f"   Messages: {len(messages)}, Temperature: {temperature or self.temperature}, Max "
+            f"tokens: {max_tokens or self.max_tokens}"
+        )
 
         # Convert messages to Gemini format
         prompt_parts = []
@@ -131,14 +141,14 @@ class GeminiJudge(BaseJudge):
             return result
 
         except Exception as e:
-            raise Exception(f"Gemini API call failed: {e}")
+            raise Exception(f"Gemini API call failed: {e}") from e
 
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
     ) -> EvaluationResult:
         """Evaluate a single response using Gemini.
@@ -157,20 +167,40 @@ class GeminiJudge(BaseJudge):
         criteria_text = self._format_criteria(criteria)
         rubric_text = self._format_rubric(rubric)
 
-        prompt = self._render_template("evaluation", context=context, response=response, criteria_text=criteria_text, rubric_text=rubric_text, use_cot=use_cot)
+        prompt = self._render_template(
+            "evaluation",
+            context=context,
+            response=response,
+            criteria_text=criteria_text,
+            rubric_text=rubric_text,
+            use_cot=use_cot,
+        )
 
-        messages = [{"role": "system", "content": "You are a professional evaluation expert. Provide thorough, unbiased assessments."}, {"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional evaluation expert. Provide thorough, unbiased "
+                "assessments.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response_text = await self._make_api_call(messages)
 
-        return self._parse_evaluation_response(response_text, criteria, model=self.model_name, temperature=self.temperature, use_cot=use_cot)
+        return self._parse_evaluation_response(
+            response_text,
+            criteria,
+            model=self.model_name,
+            temperature=self.temperature,
+            use_cot=use_cot,
+        )
 
     async def pairwise_comparison(
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> PairwiseResult:
         """Compare two responses using Gemini.
@@ -185,13 +215,15 @@ class GeminiJudge(BaseJudge):
         Returns:
             Pairwise comparison result
         """
-        return await self._base_pairwise_comparison(response_a, response_b, criteria, context, position_bias_mitigation)
+        return await self._base_pairwise_comparison(
+            response_a, response_b, criteria, context, position_bias_mitigation
+        )
 
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "tournament",
     ) -> RankingResult:
         """Rank multiple responses using Gemini.
@@ -228,4 +260,6 @@ class GeminiJudge(BaseJudge):
         Returns:
             ReferenceEvaluationResult containing score and analysis
         """
-        return await self._base_reference_evaluation(response, reference, evaluation_type, tolerance)
+        return await self._base_reference_evaluation(
+            response, reference, evaluation_type, tolerance
+        )
