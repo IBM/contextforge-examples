@@ -8,6 +8,12 @@ Cargo.lock
 
 # Python
 __pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 *.py[cod]
 *$py.class
 *.so
