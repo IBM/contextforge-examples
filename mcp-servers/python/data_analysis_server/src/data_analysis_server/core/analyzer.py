@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Data analysis and profiling functionality.
 """
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DataAnalyzer:
     """Provides comprehensive data analysis capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the data analyzer."""
         self.descriptive_stats = DescriptiveStatistics()
 

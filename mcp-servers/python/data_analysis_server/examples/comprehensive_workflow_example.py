@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Comprehensive Workflow Example for MCP Data Analysis Server
 
-This example demonstrates an end-to-end data analysis workflow combining ALL capabilities:
+This example demonstrates an end-to-end data analysis workflow combining ALL
+capabilities:
 1. Data loading and validation
 2. Exploratory data analysis
 3. Data cleaning and transformation
@@ -143,7 +143,8 @@ async def main():
         print("✅ Data cleaning completed:")
         print(f"   • Cleaned dataset ID: {cleaned_dataset_id}")
         print(
-            f"   • Operations applied: {len(cleaning_summary.get('transformation_log', []))}"
+            f"   • Operations applied: "
+            f"{len(cleaning_summary.get('transformation_log', []))}"
         )
 
         if "shape_changes" in cleaning_summary:
@@ -237,7 +238,8 @@ async def main():
             print(f"   • Strong correlations found: {len(strong_corrs)}")
             for corr in strong_corrs:
                 print(
-                    f"     - {corr.get('feature_1')} ↔ {corr.get('feature_2')}: {corr.get('correlation', 0):.3f}"
+                    f"     - {corr.get('feature_1')} ↔ {corr.get('feature_2')}: "
+                    f"{corr.get('correlation', 0):.3f}"
                 )
 
     print("\n🎯 Step 3.2: Hypothesis testing - Revenue by Product Category...")
@@ -311,7 +313,8 @@ async def main():
             trend = ts_result["trend_analysis"]
             if "direction" in trend:
                 print(
-                    f"   • Trend: {trend.get('direction', 'N/A')} ({trend.get('strength', 'N/A')} strength)"
+                    f"   • Trend: {trend.get('direction', 'N/A')} "
+                    f"({trend.get('strength', 'N/A')} strength)"
                 )
 
         if "forecast" in ts_result:
@@ -360,7 +363,8 @@ async def main():
             print("   Top performing category-tier combinations:")
             for i, row in enumerate(query_data["data"][:5], 1):
                 print(
-                    f"   {i}. {row.get('product_category', 'N/A')} - {row.get('revenue_tier', 'N/A')}: "
+                    f"   {i}. {row.get('product_category', 'N/A')} - "
+                    f"{row.get('revenue_tier', 'N/A')}: "
                     f"${row.get('total_revenue', 0):,.0f} "
                     f"({row.get('transaction_count', 0)} transactions)"
                 )
@@ -396,7 +400,8 @@ async def main():
                     f"   • {row.get('customer_segment', 'N/A')}: "
                     f"{row.get('unique_customers', 0)} customers, "
                     f"${row.get('segment_revenue', 0):,.0f} revenue, "
-                    f"{row.get('transactions_per_customer', 0):.1f} transactions/customer"
+                    f"{row.get('transactions_per_customer', 0):.1f} "
+                    "transactions/customer"
                 )
 
     # Phase 6: COMPREHENSIVE VISUALIZATIONS

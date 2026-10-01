@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Time series analysis functionality.
 """
@@ -6,7 +5,7 @@ Time series analysis functionality.
 # Standard
 import logging
 import warnings
-from typing import Any
+from typing import Any, cast
 
 # Third-Party
 import numpy as np
@@ -20,7 +19,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 class TimeSeriesAnalyzer:
     """Provides time series analysis and forecasting capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the time series analyzer."""
 
     def analyze_time_series(
@@ -244,7 +243,10 @@ class TimeSeriesAnalyzer:
                                     ),
                                 }
                             )
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug(
+                            "Seasonality check failed for period %s: %s", period, exc
+                        )
                         continue
 
             # Seasonal decomposition (simple moving average)
@@ -350,7 +352,8 @@ class TimeSeriesAnalyzer:
                         autocorrelations.append(
                             {"lag": lag, "autocorrelation": float(autocorr)}
                         )
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Autocorrelation failed for lag %s: %s", lag, exc)
                     continue
 
             # Find significant autocorrelations
@@ -419,7 +422,9 @@ class TimeSeriesAnalyzer:
             if freq and freq != "irregular":
                 forecast_index = pd.date_range(
                     start=series.index[-1], periods=forecast_periods + 1, freq=freq
-                )[1:]  # Exclude the last historical point
+                )[
+                    1:
+                ]  # Exclude the last historical point
             else:
                 # Create a simple numeric index
                 forecast_index = range(len(series), len(series) + forecast_periods)
@@ -472,6 +477,7 @@ class TimeSeriesAnalyzer:
                 return None  # No significant seasonal pattern
 
             # Normalize to have mean of 0
-            return seasonal_array - np.mean(seasonal_array)
+            normalized = seasonal_array - np.mean(seasonal_array)
+            return cast("np.ndarray[Any, Any]", normalized)
         except Exception:
             return None

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Time Series Analysis Example
 
@@ -151,7 +150,8 @@ async def main():
             print(f"\n   📊 Analysis for {column}:")
             print(f"   • Data points: {results['data_points']}")
             print(
-                f"   • Time range: {results['time_range']['start']} to {results['time_range']['end']}"
+                f"   • Time range: {results['time_range']['start']}"
+                f" to {results['time_range']['end']}"
             )
             print(f"   • Frequency: {results['frequency']}")
 
@@ -160,7 +160,8 @@ async def main():
                 trend = results["trend_analysis"]
                 if "error" not in trend:
                     print(
-                        f"   • Trend: {trend['direction']} ({trend['strength']} strength)"
+                        f"   • Trend: {trend['direction']} "
+                        f"({trend['strength']} strength)"
                     )
                     print(f"   • R-squared: {trend['r_squared']:.3f}")
                     print(
@@ -173,7 +174,8 @@ async def main():
                 if "rolling_stats" in stationarity:
                     rs = stationarity["rolling_stats"]
                     print(
-                        f"   • Appears stationary: {'Yes' if rs['appears_stationary'] else 'No'}"
+                        "   • Appears stationary: "
+                        f"{'Yes' if rs['appears_stationary'] else 'No'}"
                     )
 
             # Forecast results
@@ -183,7 +185,8 @@ async def main():
                     print(f"   • Forecast: {forecast['periods']} periods ahead")
                     print(f"   • Method: {forecast['method']}")
                     print(
-                        f"   • Forecast values: {forecast['forecast'][:3]}... (showing first 3)"
+                        f"   • Forecast values: {forecast['forecast'][:3]}..."
+                        " (showing first 3)"
                     )
 
     # Step 5: Statistical tests on time series data
@@ -218,7 +221,8 @@ async def main():
 
     if correlation_viz["success"]:
         print(
-            f"✅ Created correlation plot: {correlation_viz['visualization']['filename']}"
+            f"✅ Created correlation plot: "
+            f"{correlation_viz['visualization']['filename']}"
         )
 
     # Step 6: Sector analysis
@@ -253,7 +257,10 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT date, symbol, close, volume FROM table WHERE volume > 2000000 ORDER BY volume DESC",
+            "query": (
+                "SELECT date, symbol, close, volume FROM table"
+                " WHERE volume > 2000000 ORDER BY volume DESC"
+            ),
             "limit": 5,
             "return_format": "json",
         },
@@ -265,7 +272,8 @@ async def main():
         if "data" in query_data:
             for row in query_data["data"]:
                 print(
-                    f"   • {row['date']}: {row['symbol']} - Volume: {row['volume']:,}, Price: ${row['close']:.2f}"
+                    f"   • {row['date']}: {row['symbol']} - "
+                    f"Volume: {row['volume']:,}, Price: ${row['close']:.2f}"
                 )
 
     print("\n🎉 Time series analysis example completed!")

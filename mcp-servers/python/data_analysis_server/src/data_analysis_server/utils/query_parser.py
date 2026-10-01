@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 SQL-like query parsing and execution for pandas DataFrames.
 """
@@ -90,7 +89,7 @@ class DataQueryParser:
 
     def _execute_select_query(self, df: pd.DataFrame, query: str) -> pd.DataFrame:
         """Execute a SELECT-style query."""
-        # This is a simplified SQL parser - in production you'd want a more robust solution
+        # Simplified SQL parser; production use would want a more robust solution
 
         query = query.strip()
         query_parts = self._parse_select_statement(query)
@@ -111,7 +110,7 @@ class DataQueryParser:
             if query_parts.get("having"):
                 result_df = self._apply_having_clause(result_df, query_parts["having"])
         elif query_parts.get("aggregates"):
-            # Handle aggregates without GROUP BY (e.g., SELECT COUNT(*), SUM(revenue) FROM table)
+            # Aggregates without GROUP BY (e.g. SELECT COUNT(*), SUM(revenue) FROM t)
             result_df = self._apply_global_aggregates(
                 result_df, query_parts["aggregates"]
             )
@@ -135,7 +134,7 @@ class DataQueryParser:
 
     def _parse_select_statement(self, query: str) -> dict[str, Any]:
         """Parse a SELECT statement into components."""
-        query_parts = {}
+        query_parts: dict[str, Any] = {}
 
         # Remove extra whitespace and normalize
         query = re.sub(r"\s+", " ", query.strip())
@@ -234,7 +233,7 @@ class DataQueryParser:
             # Simple condition parsing - convert SQL-like syntax to pandas query
             condition = where_clause
 
-            # Fix quote handling: Convert single quotes to double quotes for pandas query
+            # Quote handling: single quotes to double quotes for pandas query
             condition = self._fix_quotes_in_condition(condition)
 
             # Convert SQL operators to pandas query syntax
@@ -275,7 +274,7 @@ class DataQueryParser:
         # Handle IN clauses with single quotes
         pattern = r"'([^']*)'"
 
-        def replace_quotes_in_in(match):
+        def replace_quotes_in_in(match: re.Match[str]) -> str:
             return f'"{match.group(1)}"'
 
         # Only replace quotes that aren't already handled by the above patterns
@@ -307,7 +306,7 @@ class DataQueryParser:
         # Pattern: column IN ('val1', 'val2') -> column.isin(["val1", "val2"])
         in_pattern = r"(\w+)\s+IN\s+\((.*?)\)"
 
-        def replace_in(match):
+        def replace_in(match: re.Match[str]) -> str:
             column = match.group(1)
             values = match.group(2)
             return f"{column}.isin([{values}])"
@@ -319,7 +318,7 @@ class DataQueryParser:
         self,
         df: pd.DataFrame,
         group_cols: list[str],
-        aggregates: dict[str, tuple] | None,
+        aggregates: dict[str, tuple[str, ...]] | None,
     ) -> pd.DataFrame:
         """Apply GROUP BY with optional aggregations."""
         try:
@@ -397,7 +396,7 @@ class DataQueryParser:
             return df
 
     def _apply_global_aggregates(
-        self, df: pd.DataFrame, aggregates: dict[str, tuple]
+        self, df: pd.DataFrame, aggregates: dict[str, tuple[str, ...]]
     ) -> pd.DataFrame:
         """Apply aggregate functions without GROUP BY (global aggregates)."""
         try:
@@ -480,7 +479,7 @@ class DataQueryParser:
             return df
 
     def _apply_order_by(
-        self, df: pd.DataFrame, order_specs: list[tuple]
+        self, df: pd.DataFrame, order_specs: list[tuple[str, ...]]
     ) -> pd.DataFrame:
         """Apply ORDER BY clause."""
         try:
@@ -501,9 +500,9 @@ class DataQueryParser:
             logger.warning(f"Failed to apply ORDER BY: {e}")
             return df
 
-    def _parse_order_by(self, order_expr: str) -> list[tuple]:
+    def _parse_order_by(self, order_expr: str) -> list[tuple[str, ...]]:
         """Parse ORDER BY expression."""
-        order_specs = []
+        order_specs: list[tuple[str, ...]] = []
 
         for item in order_expr.split(","):
             item = item.strip()
@@ -548,7 +547,7 @@ class DataQueryParser:
             query = query.strip()
             query_lower = query.lower()
 
-            validation_result = {
+            validation_result: dict[str, Any] = {
                 "valid": True,
                 "query_type": "unknown",
                 "warnings": [],
@@ -619,8 +618,8 @@ class DataQueryParser:
         df = result["data"]
 
         if format_type == "csv":
-            return df.to_csv(index=False)
+            return str(df.to_csv(index=False))
         elif format_type == "html":
-            return df.to_html(index=False, classes="table table-striped")
+            return str(df.to_html(index=False, classes="table table-striped"))
         else:  # json
             return {**result, "data": df.to_dict(orient="records")}

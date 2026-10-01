@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Query Operations Example for MCP Data Analysis Server
 
@@ -76,7 +75,9 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT customer_id, product_name, quantity, price FROM table LIMIT 10",
+            "query": (
+                "SELECT customer_id, product_name, quantity, price FROM table LIMIT 10"
+            ),
             "return_format": "json",
         },
     )
@@ -117,7 +118,10 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT customer_id, product_name, price FROM table WHERE price > 100 AND price < 500 ORDER BY price DESC LIMIT 8",
+            "query": (
+                "SELECT customer_id, product_name, price FROM table"
+                " WHERE price > 100 AND price < 500 ORDER BY price DESC LIMIT 8"
+            ),
             "return_format": "json",
         },
     )
@@ -136,7 +140,11 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT category, COUNT(*) as count FROM table WHERE category IN ('Electronics', 'Clothing', 'Books') GROUP BY category",
+            "query": (
+                "SELECT category, COUNT(*) as count FROM table"
+                " WHERE category IN ('Electronics', 'Clothing', 'Books')"
+                " GROUP BY category"
+            ),
             "return_format": "json",
         },
     )
@@ -195,7 +203,10 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT product_name, price FROM table WHERE product_name LIKE 'Phone' LIMIT 5",
+            "query": (
+                "SELECT product_name, price FROM table"
+                " WHERE product_name LIKE 'Phone' LIMIT 5"
+            ),
             "return_format": "json",
         },
     )
@@ -216,13 +227,12 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": """
-            SELECT customer_id, product_name, quantity, price
-            FROM table
-            WHERE (price > 200 AND quantity > 2) OR (category = 'Electronics' AND price < 50)
-            ORDER BY price DESC
-            LIMIT 10
-            """,
+            "query": (
+                "SELECT customer_id, product_name, quantity, price FROM table"
+                " WHERE (price > 200 AND quantity > 2)"
+                " OR (category = 'Electronics' AND price < 50)"
+                " ORDER BY price DESC LIMIT 10"
+            ),
             "return_format": "json",
         },
     )
@@ -299,7 +309,8 @@ async def main():
         if "data" in query_data:
             for i, row in enumerate(query_data["data"][:5], 1):
                 print(
-                    f"   {i}. {row.get('product_name', 'N/A')} ({row.get('category', 'N/A')}): "
+                    f"   {i}. {row.get('product_name', 'N/A')} "
+                    f"({row.get('category', 'N/A')}): "
                     f"Sold {row.get('total_sold', 0)} units, "
                     f"{row.get('purchase_frequency', 0)} transactions, "
                     f"Revenue=${row.get('total_revenue', 0):,.0f}"
@@ -313,7 +324,10 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT category, AVG(price) as avg_price, COUNT(*) as count FROM table GROUP BY category ORDER BY avg_price DESC LIMIT 5",
+            "query": (
+                "SELECT category, AVG(price) as avg_price, COUNT(*) as count"
+                " FROM table GROUP BY category ORDER BY avg_price DESC LIMIT 5"
+            ),
             "return_format": "csv",
         },
     )
@@ -331,7 +345,10 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT product_name, price, category FROM table ORDER BY price DESC LIMIT 3",
+            "query": (
+                "SELECT product_name, price, category FROM table"
+                " ORDER BY price DESC LIMIT 3"
+            ),
             "return_format": "html",
         },
     )
@@ -348,7 +365,9 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT customer_id, product_name, price FROM table ORDER BY price ASC",
+            "query": (
+                "SELECT customer_id, product_name, price FROM table ORDER BY price ASC"
+            ),
             "limit": 5,
             "offset": 10,
             "return_format": "json",

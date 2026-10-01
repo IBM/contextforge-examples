@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Statistical hypothesis testing functionality.
 """
@@ -20,7 +19,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 class HypothesisTests:
     """Provides statistical hypothesis testing capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the hypothesis testing module."""
 
     def perform_test(
@@ -235,7 +234,7 @@ class HypothesisTests:
 
         # Calculate group statistics
         group_stats = []
-        for i, (name, group) in enumerate(df.groupby(groupby_column)):
+        for name, group in df.groupby(groupby_column):
             group_data = group[column].dropna()
             group_stats.append(
                 {

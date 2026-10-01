@@ -57,10 +57,27 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+# pandas/seaborn/plotly ship no usable stubs for this codebase's dynamic
+# API usage; treat them as untyped rather than enforcing strict checks
+# against dynamic DataFrame operations.
+[[tool.mypy.overrides]]
+module = ["pandas", "scipy.*", "seaborn", "sklearn.*", "plotly", "plotly.*", "yaml"]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "W", "F", "B", "I", "N", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: asserts in tests are idiomatic pytest.
+"tests/**" = ["S101"]
+# N806: Q1/Q3/IQR and X are conventional statistical names (quartiles,
+# design matrix); lowercasing would reduce clarity.
+"src/data_analysis_server/core/analyzer.py" = ["N806"]
+"src/data_analysis_server/core/transformer.py" = ["N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Descriptive statistics functionality for data analysis.
 
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DescriptiveStatistics:
     """Provides comprehensive descriptive statistics functionality."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the descriptive statistics analyzer."""
 
     def get_basic_info(self, df: pd.DataFrame) -> dict[str, Any]:
@@ -68,7 +67,10 @@ class DescriptiveStatistics:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         categorical_cols = df.select_dtypes(include=["object", "category"]).columns
 
-        result = {"numeric_columns": {}, "categorical_columns": {}}
+        result: dict[str, dict[str, Any]] = {
+            "numeric_columns": {},
+            "categorical_columns": {},
+        }
 
         # Numeric columns descriptive statistics
         for col in numeric_cols:
@@ -101,7 +103,7 @@ class DescriptiveStatistics:
             return {"count": 0, "error": "No valid numeric values"}
 
         # Basic descriptive statistics
-        stats_dict = {
+        stats_dict: dict[str, Any] = {
             "count": len(series),
             "mean": float(series.mean()),
             "std": float(series.std()),
@@ -178,7 +180,7 @@ class DescriptiveStatistics:
 
         value_counts = series.value_counts()
 
-        stats_dict = {
+        stats_dict: dict[str, Any] = {
             "count": len(series),
             "unique": series.nunique(),
             "top": str(value_counts.index[0]) if not value_counts.empty else None,

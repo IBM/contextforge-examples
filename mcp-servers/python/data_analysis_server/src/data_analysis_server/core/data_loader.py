@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Data loading functionality for multiple formats and sources.
 """
@@ -29,7 +28,7 @@ class DataLoader:
         self,
         max_download_size_mb: int = 500,
         timeout_seconds: int = 30,
-        allowed_protocols: set | None = None,
+        allowed_protocols: set[str] | None = None,
     ):
         """
         Initialize the data loader.
@@ -195,7 +194,7 @@ class DataLoader:
 
         return self._apply_sampling(df, sample_size)
 
-    def _detect_date_columns(self, df: pd.DataFrame) -> list:
+    def _detect_date_columns(self, df: pd.DataFrame) -> list[str]:
         """Detect columns that likely contain dates."""
         date_columns = []
 
@@ -255,19 +254,21 @@ class DataLoader:
                                 pd.to_datetime(
                                     sample, format=date_format, errors="raise"
                                 )
-                                # If successful, convert the entire column with this format
+                                # On success, convert the entire column with this format
                                 df[col] = pd.to_datetime(
                                     df[col], format=date_format, errors="coerce"
                                 )
                                 logger.info(
-                                    f"Converted column '{col}' to datetime using format {date_format}"
+                                    f"Converted column '{col}' to datetime"
+                                    f" using format {date_format}"
                                 )
                                 converted = True
                                 break
                             except (ValueError, TypeError):
                                 continue
 
-                        # If no specific format worked, try pandas' general parser (but suppress warnings)
+                        # No specific format worked; try pandas' general parser
+                        # (suppress warnings)
                         if not converted:
                             try:
                                 # Test if pandas can parse it without specifying format
@@ -280,7 +281,8 @@ class DataLoader:
                                     # If successful, convert the entire column
                                     df[col] = pd.to_datetime(df[col], errors="coerce")
                                     logger.info(
-                                        f"Converted column '{col}' to datetime using inferred format"
+                                        f"Converted column '{col}' to datetime"
+                                        " using inferred format"
                                     )
                             except (ValueError, TypeError):
                                 # Not a date column, keep as is
@@ -316,7 +318,7 @@ class DataLoader:
                     return pd.read_csv(path, encoding=encoding, **options)
                 except UnicodeDecodeError:
                     continue
-            raise ValueError("Unable to decode CSV file with any encoding")
+            raise ValueError("Unable to decode CSV file with any encoding") from None
 
     def _load_json(self, path: Path, options: dict[str, Any]) -> pd.DataFrame:
         """Load JSON file with error handling."""
@@ -340,7 +342,7 @@ class DataLoader:
         return df
 
     @classmethod
-    def get_supported_formats(cls) -> list:
+    def get_supported_formats(cls) -> list[str]:
         """Get list of supported data formats."""
         return list(cls.SUPPORTED_FORMATS)
 
@@ -355,7 +357,7 @@ class DataLoader:
         Returns:
             Validation result dictionary
         """
-        result = {
+        result: dict[str, Any] = {
             "valid": False,
             "source_type": None,
             "error": None,
