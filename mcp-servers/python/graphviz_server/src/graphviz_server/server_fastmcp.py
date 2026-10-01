@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/graphviz_server/src/graphviz_server/server_fastmcp.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -37,7 +36,7 @@ mcp = FastMCP("graphviz-server")
 class GraphvizProcessor:
     """Handles Graphviz graph processing operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.dot_cmd = self._find_graphviz()
 
     def _find_graphviz(self) -> str:
@@ -335,7 +334,9 @@ class GraphvizProcessor:
             # For node/edge attributes (simplified implementation)
             return {
                 "success": True,
-                "message": f"{target_type.capitalize()} attributes would be set (simplified for FastMCP)",
+                "message": (
+                    f"{target_type.capitalize()} attributes would be set (simplified for FastMCP)"
+                ),
                 "target_type": target_type,
                 "target_id": target_id,
                 "attributes": attributes,
@@ -356,7 +357,7 @@ class GraphvizProcessor:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
 
-            analysis = {"success": True}
+            analysis: dict[str, Any] = {"success": True}
 
             if include_structure:
                 # Count nodes and edges (simplified)
@@ -444,7 +445,7 @@ try:
     processor = GraphvizProcessor()
 except RuntimeError as e:
     logger.warning(f"Graphviz not available: {e}")
-    processor = None  # Server will still work for DOT file manipulation
+    processor = None  # type: ignore[assignment]  # Server still works for DOT file manipulation
 
 
 @mcp.tool(description="Create a new DOT graph file")
@@ -542,7 +543,7 @@ async def list_layouts() -> dict[str, Any]:
     return processor.list_layouts()
 
 
-def main():
+def main() -> None:
     """Main entry point for the FastMCP server."""
     import argparse
 
