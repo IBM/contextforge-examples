@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Location: ./mcp-servers/python/url_to_markdown_server/src/url_to_markdown_server/server_fastmcp.py
+"""Location: ./mcp-servers/python/url_to_markdown_server/server_fastmcp.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
 Authors: Mihai Criveti
@@ -146,9 +145,9 @@ mcp = FastMCP(name="url-to-markdown-server", version="2.0.0")
 class UrlToMarkdownConverter:
     """Main converter class for URL-to-Markdown operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the converter."""
-        self.session = None
+        self.session: httpx.AsyncClient | None = None
         # The pinned direct transport built by get_session(), used to tell whether a
         # given request actually went out pinned or via an unpinned proxy mount - see
         # fetch_url_content(). None until the first get_session() call.
@@ -254,7 +253,9 @@ class UrlToMarkdownConverter:
             client_kwargs: dict[str, Any] = {
                 "headers": {
                     "User-Agent": DEFAULT_USER_AGENT,
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept": (
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+                    ),
                     "Accept-Language": "en-US,en;q=0.5",
                     "Accept-Encoding": "gzip, deflate",
                     "Connection": "keep-alive",
@@ -307,6 +308,7 @@ class UrlToMarkdownConverter:
             self.session = httpx.AsyncClient(
                 transport=transport, mounts=mounts or None, **client_kwargs
             )
+        assert self.session is not None
         return self.session
 
     async def fetch_url_content(self, url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
@@ -695,7 +697,7 @@ class UrlToMarkdownConverter:
 
         return html_content.strip()
 
-    def _extract_main_content(self, soup):
+    def _extract_main_content(self, soup: Any) -> Any:
         """Extract main content from BeautifulSoup object."""
         # Try to find main content areas
         main_selectors = [
@@ -732,7 +734,9 @@ class UrlToMarkdownConverter:
 
         return soup
 
-    def _soup_to_markdown(self, element, base_url: str = "", include_images: bool = True) -> str:
+    def _soup_to_markdown(
+        self, element: Any, base_url: str = "", include_images: bool = True
+    ) -> str:
         """Convert BeautifulSoup element to markdown."""
         markdown_parts = []
 
@@ -904,7 +908,8 @@ class UrlToMarkdownConverter:
                 "web": ["text/html", "application/xhtml+xml"],
                 "documents": ["application/pdf"],
                 "office": [
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # DOCX
+                    # DOCX
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 ],
                 "text": ["text/plain", "text/markdown", "application/json"],
             },
@@ -1137,10 +1142,10 @@ async def batch_convert(
         # Process results
         successful = 0
         failed = 0
-        processed_results = []
+        processed_results: list[dict[str, Any]] = []
 
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 processed_results.append({"url": urls[i], "success": False, "error": str(result)})
                 failed += 1
             else:
@@ -1170,7 +1175,7 @@ async def get_capabilities() -> dict[str, Any]:
     return converter.get_capabilities()
 
 
-def main():
+def main() -> None:
     """Main server entry point."""
     import argparse
 

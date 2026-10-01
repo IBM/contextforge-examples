@@ -72,10 +72,23 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+# Optional converters from the "full" extra are not installed in the base env;
+# server_fastmcp.py probes their availability with try/except imports.
+[[tool.mypy.overrides]]
+module = ["bs4", "docx", "fitz", "html2text", "markdownify", "openpyxl", "pypandoc", "readability"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
 select = ["E", "W", "F", "B", "I", "N", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# B008: FastMCP tool parameters intentionally use Field() call defaults.
+# F401: optional-converter imports are availability probes (try/except flags).
+"src/url_to_markdown_server/server_fastmcp.py" = ["B008", "F401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
