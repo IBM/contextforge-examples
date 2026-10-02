@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 MCP Data Analysis Server
 
@@ -21,7 +20,15 @@ import yaml
 # Third-Party
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
-from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
+from mcp.types import (
+    EmbeddedResource,
+    ImageContent,
+    LoggingCapability,
+    ServerCapabilities,
+    TextContent,
+    Tool,
+    ToolsCapability,
+)
 
 # Local
 from .core.analyzer import DataAnalyzer
@@ -138,13 +145,16 @@ class DataAnalysisServer:
 analysis_server = DataAnalysisServer()
 
 
-@server.list_tools()
+@server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]  # mcp decorators are untyped
 async def handle_list_tools() -> list[Tool]:
     """List available tools."""
     return [
         Tool(
             name="load_dataset",
-            description="Load data from various sources and formats (CSV, JSON, Parquet, SQL, Excel)",
+            description=(
+                "Load data from various sources and formats"
+                " (CSV, JSON, Parquet, SQL, Excel)"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -465,7 +475,7 @@ async def handle_list_tools() -> list[Tool]:
     ]
 
 
-@server.call_tool()
+@server.call_tool()  # type: ignore[untyped-decorator]  # mcp decorators are untyped
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
@@ -494,7 +504,10 @@ async def handle_call_tool(
                 "success": True,
                 "dataset_id": dataset_id,
                 "dataset_info": dataset_info.model_dump(),
-                "message": f"Successfully loaded dataset with {df.shape[0]} rows and {df.shape[1]} columns",
+                "message": (
+                    f"Successfully loaded dataset with {df.shape[0]} rows"
+                    f" and {df.shape[1]} columns"
+                ),
             }
 
         elif name == "analyze_dataset":
@@ -526,7 +539,7 @@ async def handle_call_tool(
             }
 
             # Validate with Pydantic model (for type safety)
-            analysis_response = AnalysisResult(
+            AnalysisResult(
                 dataset_id=analysis_request.dataset_id,
                 analysis_type=analysis_request.analysis_type,
                 summary=comprehensive_summary,
@@ -568,7 +581,7 @@ async def handle_call_tool(
             else:
                 dof_int = dof
 
-            test_response = TestResult(
+            TestResult(
                 test_type=stat_request.test_type,
                 statistic=test_result_raw.get("statistic", 0.0),
                 p_value=test_result_raw.get("p_value", 1.0),
@@ -605,7 +618,7 @@ async def handle_call_tool(
             )
 
             # Validate with Pydantic model (for type safety)
-            viz_response = VisualizationResult(
+            VisualizationResult(
                 plot_type=viz_request.plot_type,
                 file_path=viz_result_raw.get("file_path", ""),
                 format=viz_request.save_format,
@@ -657,7 +670,7 @@ async def handle_call_tool(
                     for op in summary.get("transformation_log", [])
                 ]
 
-                transform_response = TransformResult(
+                TransformResult(
                     dataset_id=new_dataset_id,
                     operations_applied=operations_list,
                     shape_before=original_df.shape,
@@ -687,7 +700,7 @@ async def handle_call_tool(
                     for op in summary.get("transformation_log", [])
                 ]
 
-                transform_response = TransformResult(
+                TransformResult(
                     dataset_id=transform_request.dataset_id,
                     operations_applied=operations_list,
                     shape_before=original_shape,
@@ -770,7 +783,7 @@ async def handle_call_tool(
     ]
 
 
-async def main():
+async def main() -> None:
     """Main server entry point."""
     logger.info("Starting MCP Data Analysis Server...")
 
@@ -787,10 +800,9 @@ async def main():
             InitializationOptions(
                 server_name="data-analysis-server",
                 server_version="0.1.0",
-                capabilities={
-                    "tools": {},
-                    "logging": {},
-                },
+                capabilities=ServerCapabilities(
+                    tools=ToolsCapability(), logging=LoggingCapability()
+                ),
             ),
         )
 

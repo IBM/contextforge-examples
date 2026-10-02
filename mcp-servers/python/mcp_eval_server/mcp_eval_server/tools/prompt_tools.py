@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/prompt_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ MCP tools for prompt evaluation.
 # Standard
 import re
 import statistics
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Third-Party
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -23,7 +22,7 @@ from .judge_tools import JudgeTools
 class PromptTools:
     """Tools for prompt evaluation and analysis."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize prompt tools.
 
         Args:
@@ -35,9 +34,9 @@ class PromptTools:
         self,
         prompt_text: str,
         target_model: str = "general",
-        domain_context: Optional[str] = None,
+        domain_context: str | None = None,
         judge_model: str = "gpt-4",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess prompt clarity using multiple metrics.
 
         Args:
@@ -54,10 +53,30 @@ class PromptTools:
 
         # LLM-based evaluation
         criteria = [
-            {"name": "instruction_clarity", "description": "How clear and unambiguous are the instructions", "scale": "1-5", "weight": 0.3},
-            {"name": "language_precision", "description": "Appropriateness and precision of vocabulary used", "scale": "1-5", "weight": 0.25},
-            {"name": "task_specificity", "description": "How well-defined and specific the task is", "scale": "1-5", "weight": 0.25},
-            {"name": "format_clarity", "description": "Quality of output format specification", "scale": "1-5", "weight": 0.2},
+            {
+                "name": "instruction_clarity",
+                "description": "How clear and unambiguous are the instructions",
+                "scale": "1-5",
+                "weight": 0.3,
+            },
+            {
+                "name": "language_precision",
+                "description": "Appropriateness and precision of vocabulary used",
+                "scale": "1-5",
+                "weight": 0.25,
+            },
+            {
+                "name": "task_specificity",
+                "description": "How well-defined and specific the task is",
+                "scale": "1-5",
+                "weight": 0.25,
+            },
+            {
+                "name": "format_clarity",
+                "description": "Quality of output format specification",
+                "scale": "1-5",
+                "weight": 0.2,
+            },
         ]
 
         rubric = {
@@ -75,7 +94,13 @@ class PromptTools:
         if domain_context:
             context += f"\nDomain context: {domain_context}"
 
-        llm_evaluation = await self.judge_tools.evaluate_response(response=prompt_text, criteria=criteria, rubric=rubric, judge_model=judge_model, context=context)
+        llm_evaluation = await self.judge_tools.evaluate_response(
+            response=prompt_text,
+            criteria=criteria,
+            rubric=rubric,
+            judge_model=judge_model,
+            context=context,
+        )
 
         # Combine rule-based and LLM metrics
         clarity_score = (rule_metrics["clarity_score"] + llm_evaluation["overall_score"]) / 2
@@ -91,7 +116,7 @@ class PromptTools:
             "recommendations": self._generate_clarity_recommendations(rule_metrics, llm_evaluation),
         }
 
-    def _analyze_clarity_rules(self, prompt_text: str) -> Dict[str, Any]:
+    def _analyze_clarity_rules(self, prompt_text: str) -> dict[str, Any]:
         """Analyze prompt clarity using rule-based metrics.
 
         Args:
@@ -104,7 +129,17 @@ class PromptTools:
         ambiguity_points = []
 
         # Check for vague terms
-        vague_terms = ["some", "many", "few", "several", "various", "might", "could", "maybe", "perhaps"]
+        vague_terms = [
+            "some",
+            "many",
+            "few",
+            "several",
+            "various",
+            "might",
+            "could",
+            "maybe",
+            "perhaps",
+        ]
         for term in vague_terms:
             if re.search(r"\b" + term + r"\b", prompt_text, re.IGNORECASE):
                 clarity_score -= 0.2
@@ -112,7 +147,10 @@ class PromptTools:
 
         # Check for ambiguous pronouns
         pronouns = ["it", "this", "that", "they", "them"]
-        pronoun_count = sum(len(re.findall(r"\b" + pronoun + r"\b", prompt_text, re.IGNORECASE)) for pronoun in pronouns)
+        pronoun_count = sum(
+            len(re.findall(r"\b" + pronoun + r"\b", prompt_text, re.IGNORECASE))
+            for pronoun in pronouns
+        )
         if pronoun_count > 3:
             clarity_score -= 0.3
             ambiguity_points.append(f"High pronoun usage ({pronoun_count}) may cause confusion")
@@ -124,9 +162,15 @@ class PromptTools:
             ambiguity_points.append("Multiple questions may confuse the task")
 
         # Check for contradictory instructions
-        contradictory_patterns = [(r"\bbut\b", r"\bhowever\b"), (r"\bdon\'t\b", r"\bdo\b"), (r"\bavoid\b", r"\binclude\b")]
+        contradictory_patterns = [
+            (r"\bbut\b", r"\bhowever\b"),
+            (r"\bdon\'t\b", r"\bdo\b"),
+            (r"\bavoid\b", r"\binclude\b"),
+        ]
         for pattern1, pattern2 in contradictory_patterns:
-            if re.search(pattern1, prompt_text, re.IGNORECASE) and re.search(pattern2, prompt_text, re.IGNORECASE):
+            if re.search(pattern1, prompt_text, re.IGNORECASE) and re.search(
+                pattern2, prompt_text, re.IGNORECASE
+            ):
                 clarity_score -= 0.3
                 ambiguity_points.append("Potentially contradictory instructions detected")
 
@@ -140,8 +184,20 @@ class PromptTools:
             ambiguity_points.append("Prompt may be too verbose, affecting clarity")
 
         # Check for format specifications
-        format_indicators = ["format", "structure", "example", "template", "json", "xml", "list", "table"]
-        has_format = any(re.search(r"\b" + indicator + r"\b", prompt_text, re.IGNORECASE) for indicator in format_indicators)
+        format_indicators = [
+            "format",
+            "structure",
+            "example",
+            "template",
+            "json",
+            "xml",
+            "list",
+            "table",
+        ]
+        has_format = any(
+            re.search(r"\b" + indicator + r"\b", prompt_text, re.IGNORECASE)
+            for indicator in format_indicators
+        )
         if not has_format:
             clarity_score -= 0.2
             ambiguity_points.append("No clear output format specification")
@@ -158,11 +214,11 @@ class PromptTools:
     async def test_consistency(
         self,
         prompt: str,  # pylint: disable=unused-argument
-        test_inputs: List[str],
+        test_inputs: list[str],
         num_runs: int = 3,
-        temperature_range: Optional[List[float]] = None,
+        temperature_range: list[float] | None = None,
         judge_model: str = "gpt-4",  # pylint: disable=unused-argument
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Test prompt consistency across multiple runs.
 
         Args:
@@ -199,7 +255,9 @@ class PromptTools:
             all_outputs.extend(temp_outputs)
 
         # Analyze consistency
-        consistency_metrics = await self._analyze_consistency(all_outputs, consistency_data, judge_model)
+        consistency_metrics = await self._analyze_consistency(
+            all_outputs, consistency_data, judge_model
+        )
 
         return {
             "consistency_score": consistency_metrics["overall_consistency"],
@@ -210,7 +268,9 @@ class PromptTools:
             "input_sensitivity": consistency_metrics["input_sensitivity"],
         }
 
-    async def _analyze_consistency(self, all_outputs: List[str], consistency_data: Dict[str, List[str]], judge_model: str) -> Dict[str, Any]:  # pylint: disable=unused-argument
+    async def _analyze_consistency(
+        self, all_outputs: list[str], consistency_data: dict[str, list[str]], judge_model: str
+    ) -> dict[str, Any]:  # pylint: disable=unused-argument
         """Analyze consistency of outputs.
 
         Args:
@@ -238,7 +298,14 @@ class PromptTools:
 
         for i, output in enumerate(all_outputs):
             if abs(len(output) - mean_length) > 2 * std_length:
-                outliers.append({"index": i, "output": output[:100] + "..." if len(output) > 100 else output, "length": len(output), "deviation": abs(len(output) - mean_length)})
+                outliers.append(
+                    {
+                        "index": i,
+                        "output": output[:100] + "..." if len(output) > 100 else output,
+                        "length": len(output),
+                        "deviation": abs(len(output) - mean_length),
+                    }
+                )
 
         # Calculate consistency score
         length_consistency = max(0, 1 - (length_variance / (mean_length**2)))
@@ -247,9 +314,15 @@ class PromptTools:
 
         return {
             "overall_consistency": overall_consistency,
-            "variance_analysis": {"length_variance": length_variance, "mean_length": mean_length, "std_length": std_length, "uniqueness_ratio": uniqueness_ratio},
+            "variance_analysis": {
+                "length_variance": length_variance,
+                "mean_length": mean_length,
+                "std_length": std_length,
+                "uniqueness_ratio": uniqueness_ratio,
+            },
             "outliers": outliers,
-            "stability_report": f"Generated {len(all_outputs)} outputs with {len(unique_outputs)} unique variations",
+            "stability_report": f"Generated {len(all_outputs)} outputs with {len(unique_outputs)} "
+            f"unique variations",
             "temperature_effects": "Analysis would require actual model calls",
             "input_sensitivity": "Analysis would require actual model calls",
         }
@@ -257,10 +330,10 @@ class PromptTools:
     async def measure_completeness(
         self,
         prompt: str,  # pylint: disable=unused-argument
-        expected_components: List[str],
-        test_samples: Optional[List[str]] = None,
+        expected_components: list[str],
+        test_samples: list[str] | None = None,
         judge_model: str = "gpt-4",  # pylint: disable=unused-argument
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate if prompt generates complete responses.
 
         Args:
@@ -274,7 +347,11 @@ class PromptTools:
         """
         if not test_samples:
             # Generate mock samples for demonstration
-            test_samples = ["Sample response 1 with some components", "More detailed sample response 2 covering multiple aspects", "Brief sample 3"]
+            test_samples = [
+                "Sample response 1 with some components",
+                "More detailed sample response 2 covering multiple aspects",
+                "Brief sample 3",
+            ]
 
         # Analyze each sample for component coverage
         component_coverage = {}
@@ -292,7 +369,14 @@ class PromptTools:
                     component_coverage[component] += 1
 
             coverage_ratio = len(sample_components) / len(expected_components)
-            sample_analyses.append({"sample_index": i, "covered_components": sample_components, "coverage_ratio": coverage_ratio, "sample_length": len(sample)})
+            sample_analyses.append(
+                {
+                    "sample_index": i,
+                    "covered_components": sample_components,
+                    "coverage_ratio": coverage_ratio,
+                    "sample_length": len(sample),
+                }
+            )
 
         # Calculate overall completeness
         total_samples = len(test_samples)
@@ -310,7 +394,10 @@ class PromptTools:
         coverage_heatmap = {
             "components": expected_components,
             "coverage_rates": [completeness_scores[comp] for comp in expected_components],
-            "sample_coverage": [[1 if comp in analysis["covered_components"] else 0 for comp in expected_components] for analysis in sample_analyses],
+            "sample_coverage": [
+                [1 if comp in analysis["covered_components"] else 0 for comp in expected_components]
+                for analysis in sample_analyses
+            ],
         }
 
         return {
@@ -319,17 +406,19 @@ class PromptTools:
             "missing_components": missing_components,
             "coverage_heatmap": coverage_heatmap,
             "sample_analyses": sample_analyses,
-            "recommendations": self._generate_completeness_recommendations(missing_components, completeness_scores),
+            "recommendations": self._generate_completeness_recommendations(
+                missing_components, completeness_scores
+            ),
         }
 
     async def assess_relevance(
         self,
         prompt: str,
-        outputs: List[str],
+        outputs: list[str],
         embedding_model: str = "tfidf",  # pylint: disable=unused-argument
         relevance_threshold: float = 0.7,
         judge_model: str = "gpt-4",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Measure semantic alignment between prompt and outputs.
 
         Args:
@@ -343,7 +432,9 @@ class PromptTools:
             Relevance assessment result
         """
         # Use TF-IDF vectorizer for semantic similarity
-        vectorizer = TfidfVectorizer(max_features=5000, stop_words="english", ngram_range=(1, 2), lowercase=True)
+        vectorizer = TfidfVectorizer(
+            max_features=5000, stop_words="english", ngram_range=(1, 2), lowercase=True
+        )
 
         relevance_scores = []
         semantic_analyses = []
@@ -404,7 +495,14 @@ class PromptTools:
         semantic_drift = max_score - min_score
 
         # LLM-based evaluation for additional insights
-        criteria = [{"name": "topic_adherence", "description": "How well the response stays on the intended topic", "scale": "1-5", "weight": 1.0}]
+        criteria = [
+            {
+                "name": "topic_adherence",
+                "description": "How well the response stays on the intended topic",
+                "scale": "1-5",
+                "weight": 1.0,
+            }
+        ]
 
         rubric = {
             "criteria": criteria,
@@ -419,22 +517,39 @@ class PromptTools:
 
         # Evaluate a sample output for qualitative insights
         if outputs:
-            sample_evaluation = await self.judge_tools.evaluate_response(response=outputs[0], criteria=criteria, rubric=rubric, judge_model=judge_model, context=f"Original prompt: {prompt}")
+            sample_evaluation = await self.judge_tools.evaluate_response(
+                response=outputs[0],
+                criteria=criteria,
+                rubric=rubric,
+                judge_model=judge_model,
+                context=f"Original prompt: {prompt}",
+            )
         else:
-            sample_evaluation = {"scores": {"topic_adherence": 0}, "reasoning": {"topic_adherence": "No outputs to evaluate"}}
+            sample_evaluation = {
+                "scores": {"topic_adherence": 0},
+                "reasoning": {"topic_adherence": "No outputs to evaluate"},
+            }
 
         return {
             "relevance_scores": relevance_scores,
             "average_relevance": avg_relevance,
             "semantic_drift": semantic_drift,
             "topic_adherence": on_topic_percentage,
-            "threshold_compliance": {"threshold": relevance_threshold, "compliant_outputs": relevant_count, "compliance_rate": on_topic_percentage / 100},
+            "threshold_compliance": {
+                "threshold": relevance_threshold,
+                "compliant_outputs": relevant_count,
+                "compliance_rate": on_topic_percentage / 100,
+            },
             "semantic_analyses": semantic_analyses,
             "llm_insights": sample_evaluation,
-            "recommendations": self._generate_relevance_recommendations(avg_relevance, semantic_drift, on_topic_percentage),
+            "recommendations": self._generate_relevance_recommendations(
+                avg_relevance, semantic_drift, on_topic_percentage
+            ),
         }
 
-    def _generate_clarity_recommendations(self, rule_metrics: Dict[str, Any], llm_evaluation: Dict[str, Any]) -> List[str]:
+    def _generate_clarity_recommendations(
+        self, rule_metrics: dict[str, Any], llm_evaluation: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations for improving prompt clarity.
 
         Args:
@@ -465,7 +580,9 @@ class PromptTools:
 
         return recommendations
 
-    def _generate_completeness_recommendations(self, missing_components: List[str], component_scores: Dict[str, float]) -> List[str]:
+    def _generate_completeness_recommendations(
+        self, missing_components: list[str], component_scores: dict[str, float]
+    ) -> list[str]:
         """Generate recommendations for improving prompt completeness.
 
         Args:
@@ -478,7 +595,10 @@ class PromptTools:
         recommendations = []
 
         if missing_components:
-            recommendations.append(f"Explicitly request these often-missing components: {', '.join(missing_components)}")
+            recommendations.append(
+                f"Explicitly request these often-missing components: "
+                f"{', '.join(missing_components)}"
+            )
 
         low_scoring = [comp for comp, score in component_scores.items() if score < 0.3]
         if low_scoring:
@@ -489,7 +609,9 @@ class PromptTools:
 
         return recommendations
 
-    def _generate_relevance_recommendations(self, avg_relevance: float, semantic_drift: float, on_topic_percentage: float) -> List[str]:
+    def _generate_relevance_recommendations(
+        self, avg_relevance: float, semantic_drift: float, on_topic_percentage: float
+    ) -> list[str]:
         """Generate recommendations for improving prompt relevance.
 
         Args:

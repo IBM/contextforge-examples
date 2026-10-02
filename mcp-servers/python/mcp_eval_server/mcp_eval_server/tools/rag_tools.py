@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/rag_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -8,10 +7,10 @@ MCP tools for RAG (Retrieval-Augmented Generation) evaluation.
 """
 
 # Standard
-from difflib import SequenceMatcher
 import re
 import statistics
-from typing import Any, Dict, List, Optional, Tuple
+from difflib import SequenceMatcher
+from typing import Any
 
 # Third-Party
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -24,7 +23,7 @@ from .judge_tools import JudgeTools
 class RAGTools:
     """Tools for RAG (Retrieval-Augmented Generation) evaluation."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize RAG tools.
 
         Args:
@@ -36,12 +35,12 @@ class RAGTools:
     async def evaluate_retrieval_relevance(
         self,
         query: str,
-        retrieved_documents: List[Dict[str, Any]],
+        retrieved_documents: list[dict[str, Any]],
         relevance_threshold: float = 0.7,
         embedding_model: str = "text-embedding-ada-002",
         judge_model: str = "gpt-4o-mini",
         use_llm_judge: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess relevance of retrieved documents to the query.
 
         Args:
@@ -68,12 +67,14 @@ class RAGTools:
         doc_contents = [doc.get("content", str(doc)) for doc in retrieved_documents]
 
         # Calculate semantic similarity
-        similarity_scores = await self._calculate_semantic_similarity(query, doc_contents, embedding_model)
+        similarity_scores = await self._calculate_semantic_similarity(
+            query, doc_contents, embedding_model
+        )
 
         # Use LLM judge for additional relevance assessment
         llm_relevance_scores = []
         if use_llm_judge:
-            for i, doc_content in enumerate(doc_contents):
+            for doc_content in doc_contents:
                 llm_score = await self._judge_document_relevance(query, doc_content, judge_model)
                 llm_relevance_scores.append(llm_score)
 
@@ -92,7 +93,9 @@ class RAGTools:
         overall_relevance = statistics.mean(final_scores) if final_scores else 0.0
 
         # Generate recommendations
-        recommendations = self._generate_retrieval_recommendations(final_scores, relevance_threshold, retrieved_documents)
+        recommendations = self._generate_retrieval_recommendations(
+            final_scores, relevance_threshold, retrieved_documents
+        )
 
         return {
             "overall_relevance": overall_relevance,
@@ -106,7 +109,9 @@ class RAGTools:
             "analysis": {
                 "top_score": max(final_scores) if final_scores else 0.0,
                 "bottom_score": min(final_scores) if final_scores else 0.0,
-                "score_variance": statistics.variance(final_scores) if len(final_scores) > 1 else 0.0,
+                "score_variance": (
+                    statistics.variance(final_scores) if len(final_scores) > 1 else 0.0
+                ),
                 "embedding_model": embedding_model,
                 "judge_model": judge_model if use_llm_judge else None,
             },
@@ -117,9 +122,9 @@ class RAGTools:
         query: str,
         retrieved_context: str,
         generated_answer: str,
-        context_chunks: Optional[List[str]] = None,
+        context_chunks: list[str] | None = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check how well retrieved context is used in the generated answer.
 
         Args:
@@ -135,7 +140,9 @@ class RAGTools:
         # Basic overlap analysis
         context_words = set(retrieved_context.lower().split())
         answer_words = set(generated_answer.lower().split())
-        word_overlap = len(context_words & answer_words) / len(context_words) if context_words else 0.0
+        word_overlap = (
+            len(context_words & answer_words) / len(context_words) if context_words else 0.0
+        )
 
         # Sentence-level analysis
         context_sentences = re.split(r"[.!?]+", retrieved_context)
@@ -147,22 +154,30 @@ class RAGTools:
                 continue
             max_similarity = 0.0
             for ans_sent in answer_sentences:
-                similarity = SequenceMatcher(None, ctx_sent.lower().strip(), ans_sent.lower().strip()).ratio()
+                similarity = SequenceMatcher(
+                    None, ctx_sent.lower().strip(), ans_sent.lower().strip()
+                ).ratio()
                 max_similarity = max(max_similarity, similarity)
             sentence_utilization.append(max_similarity)
 
-        avg_sentence_utilization = statistics.mean(sentence_utilization) if sentence_utilization else 0.0
+        avg_sentence_utilization = (
+            statistics.mean(sentence_utilization) if sentence_utilization else 0.0
+        )
 
         # Chunk-level analysis if provided
         chunk_utilization = {}
         if context_chunks:
             for i, chunk in enumerate(context_chunks):
                 chunk_words = set(chunk.lower().split())
-                chunk_overlap = len(chunk_words & answer_words) / len(chunk_words) if chunk_words else 0.0
+                chunk_overlap = (
+                    len(chunk_words & answer_words) / len(chunk_words) if chunk_words else 0.0
+                )
                 chunk_utilization[f"chunk_{i}"] = chunk_overlap
 
         # LLM judge evaluation
-        llm_assessment = await self._judge_context_utilization(query, retrieved_context, generated_answer, judge_model)
+        llm_assessment = await self._judge_context_utilization(
+            query, retrieved_context, generated_answer, judge_model
+        )
 
         # Calculate overall utilization score
         utilization_factors = [word_overlap, avg_sentence_utilization, llm_assessment["score"]]
@@ -179,9 +194,13 @@ class RAGTools:
                 "answer_length": len(generated_answer),
                 "context_sentences": len(context_sentences),
                 "answer_sentences": len(answer_sentences),
-                "underutilized_context": self._identify_underutilized_context(retrieved_context, generated_answer),
+                "underutilized_context": self._identify_underutilized_context(
+                    retrieved_context, generated_answer
+                ),
             },
-            "recommendations": self._generate_utilization_recommendations(overall_utilization, word_overlap, avg_sentence_utilization),
+            "recommendations": self._generate_utilization_recommendations(
+                overall_utilization, word_overlap, avg_sentence_utilization
+            ),
         }
 
     async def assess_answer_groundedness(
@@ -191,7 +210,7 @@ class RAGTools:
         supporting_context: str,
         judge_model: str = "gpt-4o-mini",
         strictness: str = "moderate",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Verify answers are grounded in provided context.
 
         Args:
@@ -210,7 +229,9 @@ class RAGTools:
         # Verify each claim against context
         claim_verification = []
         for claim in claims:
-            verification = await self._verify_claim_against_context(claim, supporting_context, judge_model, strictness)
+            verification = await self._verify_claim_against_context(
+                claim, supporting_context, judge_model, strictness
+            )
             claim_verification.append(
                 {
                     "claim": claim,
@@ -225,7 +246,9 @@ class RAGTools:
         groundedness_score = supported_claims / len(claims) if claims else 1.0
 
         # Overall LLM assessment
-        overall_assessment = await self._judge_overall_groundedness(question, answer, supporting_context, judge_model, strictness)
+        overall_assessment = await self._judge_overall_groundedness(
+            question, answer, supporting_context, judge_model, strictness
+        )
 
         # Identify potential hallucinations
         hallucinations = [v for v in claim_verification if not v["supported"]]
@@ -240,9 +263,15 @@ class RAGTools:
             "analysis": {
                 "strictness_level": strictness,
                 "confidence_distribution": [v["confidence"] for v in claim_verification],
-                "avg_confidence": statistics.mean([v["confidence"] for v in claim_verification]) if claim_verification else 0.0,
+                "avg_confidence": (
+                    statistics.mean([v["confidence"] for v in claim_verification])
+                    if claim_verification
+                    else 0.0
+                ),
             },
-            "recommendations": self._generate_groundedness_recommendations(groundedness_score, len(hallucinations), overall_assessment),
+            "recommendations": self._generate_groundedness_recommendations(
+                groundedness_score, len(hallucinations), overall_assessment
+            ),
         }
 
     async def detect_hallucination_vs_context(
@@ -251,7 +280,7 @@ class RAGTools:
         source_context: str,
         judge_model: str = "gpt-4o-mini",
         detection_threshold: float = 0.8,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Identify when responses contradict provided context.
 
         Args:
@@ -269,7 +298,9 @@ class RAGTools:
         # Check each statement against context
         contradiction_analysis = []
         for statement in factual_statements:
-            analysis = await self._check_statement_contradiction(statement, source_context, judge_model)
+            analysis = await self._check_statement_contradiction(
+                statement, source_context, judge_model
+            )
             contradiction_analysis.append(
                 {
                     "statement": statement,
@@ -280,13 +311,21 @@ class RAGTools:
             )
 
         # Identify clear contradictions
-        contradictions = [a for a in contradiction_analysis if a["contradicts_context"] and a["confidence"] >= detection_threshold]
+        contradictions = [
+            a
+            for a in contradiction_analysis
+            if a["contradicts_context"] and a["confidence"] >= detection_threshold
+        ]
 
         # Calculate hallucination metrics
-        hallucination_rate = len(contradictions) / len(factual_statements) if factual_statements else 0.0
+        hallucination_rate = (
+            len(contradictions) / len(factual_statements) if factual_statements else 0.0
+        )
 
         # Overall assessment
-        overall_assessment = await self._assess_overall_hallucination(generated_text, source_context, judge_model)
+        overall_assessment = await self._assess_overall_hallucination(
+            generated_text, source_context, judge_model
+        )
 
         return {
             "hallucination_rate": hallucination_rate,
@@ -299,18 +338,24 @@ class RAGTools:
             "analysis": {
                 "detection_threshold": detection_threshold,
                 "confidence_scores": [a["confidence"] for a in contradiction_analysis],
-                "avg_confidence": statistics.mean([a["confidence"] for a in contradiction_analysis]) if contradiction_analysis else 0.0,
+                "avg_confidence": (
+                    statistics.mean([a["confidence"] for a in contradiction_analysis])
+                    if contradiction_analysis
+                    else 0.0
+                ),
             },
-            "recommendations": self._generate_hallucination_recommendations(hallucination_rate, len(contradictions), overall_assessment),
+            "recommendations": self._generate_hallucination_recommendations(
+                hallucination_rate, len(contradictions), overall_assessment
+            ),
         }
 
     async def evaluate_retrieval_coverage(
         self,
         query: str,
-        expected_topics: List[str],
-        retrieved_documents: List[Dict[str, Any]],
+        expected_topics: list[str],
+        retrieved_documents: list[dict[str, Any]],
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Measure if key information was retrieved.
 
         Args:
@@ -353,7 +398,9 @@ class RAGTools:
         missing_topics = [tc["topic"] for tc in topic_coverage if not tc["covered"]]
 
         # Identify over-retrieval (irrelevant content)
-        irrelevance_assessment = await self._assess_retrieval_irrelevance(query, expected_topics, all_content, judge_model)
+        irrelevance_assessment = await self._assess_retrieval_irrelevance(
+            query, expected_topics, all_content, judge_model
+        )
 
         return {
             "coverage_score": coverage_score,
@@ -363,26 +410,33 @@ class RAGTools:
             "missing_topics": missing_topics,
             "irrelevance_assessment": irrelevance_assessment,
             "analysis": {
-                "avg_confidence": statistics.mean([tc["confidence"] for tc in topic_coverage]) if topic_coverage else 0.0,
+                "avg_confidence": (
+                    statistics.mean([tc["confidence"] for tc in topic_coverage])
+                    if topic_coverage
+                    else 0.0
+                ),
                 "total_content_length": len(all_content),
                 "documents_retrieved": len(retrieved_documents),
             },
-            "recommendations": self._generate_coverage_recommendations(coverage_score, missing_topics, irrelevance_assessment),
+            "recommendations": self._generate_coverage_recommendations(
+                coverage_score, missing_topics, irrelevance_assessment
+            ),
         }
 
     async def assess_citation_accuracy(
         self,
         generated_text: str,
-        source_documents: List[Dict[str, Any]],
+        source_documents: list[dict[str, Any]],
         citation_format: str = "auto",
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Validate citation quality and accuracy.
 
         Args:
             generated_text: Text with citations to verify
             source_documents: Available source documents with 'content' and optional 'id'
-            citation_format: Expected citation format ('auto', 'numeric', 'bracket', 'parenthetical')
+            citation_format: Expected citation format ('auto', 'numeric', 'bracket',
+            'parenthetical')
             judge_model: Judge model for citation assessment
 
         Returns:
@@ -398,14 +452,18 @@ class RAGTools:
             citation_analysis.append(analysis)
 
         # Check for missing citations (claims without citations)
-        uncited_claims = await self._find_uncited_claims(generated_text, source_documents, judge_model)
+        uncited_claims = await self._find_uncited_claims(
+            generated_text, source_documents, judge_model
+        )
 
         # Calculate citation metrics
         accurate_citations = sum(1 for c in citation_analysis if c["accurate"])
         citation_accuracy = accurate_citations / len(citations) if citations else 1.0
 
         # Overall citation quality assessment
-        overall_quality = await self._assess_citation_quality(generated_text, source_documents, judge_model)
+        overall_quality = await self._assess_citation_quality(
+            generated_text, source_documents, judge_model
+        )
 
         return {
             "citation_accuracy": citation_accuracy,
@@ -416,20 +474,27 @@ class RAGTools:
             "overall_quality": overall_quality,
             "analysis": {
                 "citation_format": citation_format,
-                "citations_per_claim": len(citations) / max(1, len(uncited_claims) + len(citations)),
-                "avg_citation_confidence": statistics.mean([c["confidence"] for c in citation_analysis]) if citation_analysis else 0.0,
+                "citations_per_claim": len(citations)
+                / max(1, len(uncited_claims) + len(citations)),
+                "avg_citation_confidence": (
+                    statistics.mean([c["confidence"] for c in citation_analysis])
+                    if citation_analysis
+                    else 0.0
+                ),
             },
-            "recommendations": self._generate_citation_recommendations(citation_accuracy, len(uncited_claims), overall_quality),
+            "recommendations": self._generate_citation_recommendations(
+                citation_accuracy, len(uncited_claims), overall_quality
+            ),
         }
 
     async def measure_chunk_relevance(
         self,
         query: str,
-        context_chunks: List[str],
+        context_chunks: list[str],
         embedding_model: str = "text-embedding-ada-002",
         relevance_threshold: float = 0.6,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate individual chunk relevance scores.
 
         Args:
@@ -452,7 +517,9 @@ class RAGTools:
             }
 
         # Calculate semantic similarity for each chunk
-        chunk_similarities = await self._calculate_semantic_similarity(query, context_chunks, embedding_model)
+        chunk_similarities = await self._calculate_semantic_similarity(
+            query, context_chunks, embedding_model
+        )
 
         # LLM-based relevance assessment
         llm_assessments = []
@@ -485,20 +552,24 @@ class RAGTools:
             "analysis": {
                 "top_score": max(final_scores) if final_scores else 0.0,
                 "bottom_score": min(final_scores) if final_scores else 0.0,
-                "score_variance": statistics.variance(final_scores) if len(final_scores) > 1 else 0.0,
+                "score_variance": (
+                    statistics.variance(final_scores) if len(final_scores) > 1 else 0.0
+                ),
                 "threshold": relevance_threshold,
                 "embedding_model": embedding_model,
             },
-            "recommendations": self._generate_chunk_recommendations(final_scores, relevance_threshold, chunk_rankings),
+            "recommendations": self._generate_chunk_recommendations(
+                final_scores, relevance_threshold, chunk_rankings
+            ),
         }
 
     async def benchmark_retrieval_systems(
         self,
-        test_queries: List[Dict[str, Any]],
-        retrieval_systems: List[Dict[str, Any]],
-        evaluation_metrics: List[str] = None,
+        test_queries: list[dict[str, Any]],
+        retrieval_systems: list[dict[str, Any]],
+        evaluation_metrics: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compare different retrieval approaches.
 
         Args:
@@ -527,11 +598,15 @@ class RAGTools:
                 retrieved_docs = await self._simulate_retrieval(query, system)
 
                 # Evaluate this query
-                query_result = await self._evaluate_query_retrieval(query, retrieved_docs, expected_docs, evaluation_metrics, judge_model)
+                query_result = await self._evaluate_query_retrieval(
+                    query, retrieved_docs, expected_docs, evaluation_metrics, judge_model
+                )
                 system_results.append(query_result)
 
             # Aggregate system performance
-            system_performance = self._aggregate_system_performance(system_results, evaluation_metrics)
+            system_performance = self._aggregate_system_performance(
+                system_results, evaluation_metrics
+            )
             benchmark_results[system_name] = system_performance
 
         # Compare systems
@@ -543,11 +618,15 @@ class RAGTools:
             "best_system": comparison_analysis["best_overall"],
             "metrics_evaluated": evaluation_metrics,
             "total_queries": len(test_queries),
-            "recommendations": self._generate_benchmark_recommendations(benchmark_results, comparison_analysis),
+            "recommendations": self._generate_benchmark_recommendations(
+                benchmark_results, comparison_analysis
+            ),
         }
 
     # Helper methods for semantic similarity
-    async def _calculate_semantic_similarity(self, query: str, documents: List[str], embedding_model: str) -> List[float]:
+    async def _calculate_semantic_similarity(
+        self, query: str, documents: list[str], embedding_model: str
+    ) -> list[float]:
         """Calculate semantic similarity between query and documents.
 
         Args:
@@ -568,7 +647,9 @@ class RAGTools:
             # Final fallback to TF-IDF
             return self._tfidf_similarity(query, documents)
 
-    async def _api_embedding_similarity(self, query: str, documents: List[str], _model: str) -> List[float]:
+    async def _api_embedding_similarity(
+        self, query: str, documents: list[str], _model: str
+    ) -> list[float]:
         """Calculate similarity using API-based embeddings.
 
         Args:
@@ -583,7 +664,7 @@ class RAGTools:
         # For now, fall back to local similarity
         return self._local_similarity(query, documents)
 
-    def _local_similarity(self, query: str, documents: List[str]) -> List[float]:
+    def _local_similarity(self, query: str, documents: list[str]) -> list[float]:
         """Calculate similarity using local models.
 
         Args:
@@ -596,7 +677,9 @@ class RAGTools:
         try:
             # Try to use sentence-transformers if available
             # Third-Party
-            from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
+            from sentence_transformers import (
+                SentenceTransformer,  # pylint: disable=import-outside-toplevel
+            )
 
             model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -609,7 +692,7 @@ class RAGTools:
             # Fall back to TF-IDF if sentence-transformers not available
             return self._tfidf_similarity(query, documents)
 
-    def _tfidf_similarity(self, query: str, documents: List[str]) -> List[float]:
+    def _tfidf_similarity(self, query: str, documents: list[str]) -> list[float]:
         """Calculate similarity using TF-IDF vectors.
 
         Args:
@@ -678,7 +761,9 @@ class RAGTools:
         # Convert 1-5 scale to 0-1 scale
         return (result["overall_score"] - 1) / 4
 
-    async def _judge_context_utilization(self, query: str, context: str, answer: str, judge_model: str) -> Dict[str, Any]:
+    async def _judge_context_utilization(
+        self, query: str, context: str, answer: str, judge_model: str
+    ) -> dict[str, Any]:
         """Use LLM judge to assess context utilization.
 
         Args:
@@ -727,7 +812,7 @@ class RAGTools:
         }
 
     # Content extraction helper methods
-    def _extract_claims(self, text: str) -> List[str]:
+    def _extract_claims(self, text: str) -> list[str]:
         """Extract factual claims from text.
 
         Args:
@@ -757,7 +842,7 @@ class RAGTools:
 
         return claims
 
-    def _extract_factual_statements(self, text: str) -> List[str]:
+    def _extract_factual_statements(self, text: str) -> list[str]:
         """Extract factual statements that can be verified.
 
         Args:
@@ -789,7 +874,7 @@ class RAGTools:
 
         return factual_statements
 
-    def _extract_citations(self, text: str, citation_format: str) -> List[Dict[str, Any]]:
+    def _extract_citations(self, text: str, citation_format: str) -> list[dict[str, Any]]:
         """Extract citations from text.
 
         Args:
@@ -834,7 +919,9 @@ class RAGTools:
     # Additional helper methods would continue here...
     # (Implementation of remaining helper methods would follow similar patterns)
 
-    async def _verify_claim_against_context(self, _claim: str, _context: str, _judge_model: str, _strictness: str) -> Dict[str, Any]:
+    async def _verify_claim_against_context(
+        self, _claim: str, _context: str, _judge_model: str, _strictness: str
+    ) -> dict[str, Any]:
         """Verify if a claim is supported by the context.
 
         Args:
@@ -853,7 +940,9 @@ class RAGTools:
             "evidence": "Found in context",
         }
 
-    async def _judge_overall_groundedness(self, _question: str, _answer: str, _context: str, _judge_model: str, _strictness: str) -> Dict[str, Any]:
+    async def _judge_overall_groundedness(
+        self, _question: str, _answer: str, _context: str, _judge_model: str, _strictness: str
+    ) -> dict[str, Any]:
         """Overall groundedness assessment using LLM judge.
 
         Args:
@@ -873,7 +962,9 @@ class RAGTools:
             "issues": [],
         }
 
-    def _generate_retrieval_recommendations(self, scores: List[float], threshold: float, _documents: List[Dict[str, Any]]) -> List[str]:
+    def _generate_retrieval_recommendations(
+        self, scores: list[float], threshold: float, _documents: list[dict[str, Any]]
+    ) -> list[str]:
         """Generate recommendations for improving retrieval.
 
         Args:
@@ -896,7 +987,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_utilization_recommendations(self, overall: float, word_overlap: float, sentence_util: float) -> List[str]:
+    def _generate_utilization_recommendations(
+        self, overall: float, word_overlap: float, sentence_util: float
+    ) -> list[str]:
         """Generate recommendations for improving context utilization.
 
         Args:
@@ -918,7 +1011,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_groundedness_recommendations(self, score: float, num_hallucinations: int, _assessment: Dict[str, Any]) -> List[str]:
+    def _generate_groundedness_recommendations(
+        self, score: float, num_hallucinations: int, _assessment: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations for improving groundedness.
 
         Args:
@@ -938,7 +1033,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_hallucination_recommendations(self, rate: float, num_contradictions: int, _assessment: Dict[str, Any]) -> List[str]:
+    def _generate_hallucination_recommendations(
+        self, rate: float, num_contradictions: int, _assessment: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations for reducing hallucinations.
 
         Args:
@@ -958,7 +1055,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_coverage_recommendations(self, score: float, missing_topics: List[str], _irrelevance: Dict[str, Any]) -> List[str]:
+    def _generate_coverage_recommendations(
+        self, score: float, missing_topics: list[str], _irrelevance: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations for improving coverage.
 
         Args:
@@ -974,11 +1073,15 @@ class RAGTools:
         if score < 0.8:
             recommendations.append("Improve retrieval coverage of expected topics")
         if missing_topics:
-            recommendations.append(f"Focus on retrieving content for: {', '.join(missing_topics[:3])}")
+            recommendations.append(
+                f"Focus on retrieving content for: {', '.join(missing_topics[:3])}"
+            )
 
         return recommendations
 
-    def _generate_citation_recommendations(self, accuracy: float, uncited_claims: int, _quality: Dict[str, Any]) -> List[str]:
+    def _generate_citation_recommendations(
+        self, accuracy: float, uncited_claims: int, _quality: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations for improving citations.
 
         Args:
@@ -998,7 +1101,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_chunk_recommendations(self, scores: List[float], _threshold: float, _rankings: List[Tuple[int, float]]) -> List[str]:
+    def _generate_chunk_recommendations(
+        self, scores: list[float], _threshold: float, _rankings: list[tuple[int, float]]
+    ) -> list[str]:
         """Generate recommendations for chunk relevance.
 
         Args:
@@ -1017,7 +1122,9 @@ class RAGTools:
 
         return recommendations
 
-    def _generate_benchmark_recommendations(self, _results: Dict[str, Any], comparison: Dict[str, Any]) -> List[str]:
+    def _generate_benchmark_recommendations(
+        self, _results: dict[str, Any], comparison: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations based on benchmark results.
 
         Args:
@@ -1036,7 +1143,7 @@ class RAGTools:
         return recommendations
 
     # Placeholder methods for complex operations that would need full implementation
-    def _identify_underutilized_context(self, _context: str, _answer: str) -> List[str]:
+    def _identify_underutilized_context(self, _context: str, _answer: str) -> list[str]:
         """Identify parts of context that weren't used.
 
         Args:
@@ -1048,7 +1155,7 @@ class RAGTools:
         """
         return []  # Simplified implementation
 
-    def _classify_hallucination_severity(self, rate: float, _contradictions: List[Dict]) -> str:
+    def _classify_hallucination_severity(self, rate: float, _contradictions: list[dict]) -> str:
         """Classify hallucination severity.
 
         Args:
@@ -1064,7 +1171,9 @@ class RAGTools:
             return "medium"
         return "low"
 
-    async def _check_statement_contradiction(self, _statement: str, _context: str, _judge_model: str) -> Dict[str, Any]:
+    async def _check_statement_contradiction(
+        self, _statement: str, _context: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Check if statement contradicts context.
 
         Args:
@@ -1077,7 +1186,9 @@ class RAGTools:
         """
         return {"contradicts": False, "confidence": 0.9, "explanation": "No contradiction found"}
 
-    async def _assess_overall_hallucination(self, _text: str, _context: str, _judge_model: str) -> Dict[str, Any]:
+    async def _assess_overall_hallucination(
+        self, _text: str, _context: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Overall hallucination assessment.
 
         Args:
@@ -1090,7 +1201,9 @@ class RAGTools:
         """
         return {"score": 0.1, "severity": "low", "reasoning": "No significant hallucinations"}
 
-    async def _assess_topic_coverage(self, _topic: str, _content: str, _judge_model: str) -> Dict[str, Any]:
+    async def _assess_topic_coverage(
+        self, _topic: str, _content: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Assess if topic is covered in content.
 
         Args:
@@ -1103,7 +1216,9 @@ class RAGTools:
         """
         return {"covered": True, "confidence": 0.8, "evidence": "Topic found in content"}
 
-    async def _assess_retrieval_irrelevance(self, _query: str, _topics: List[str], _content: str, _judge_model: str) -> Dict[str, Any]:
+    async def _assess_retrieval_irrelevance(
+        self, _query: str, _topics: list[str], _content: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Assess amount of irrelevant content.
 
         Args:
@@ -1117,7 +1232,9 @@ class RAGTools:
         """
         return {"irrelevance_score": 0.2, "irrelevant_sections": []}
 
-    async def _verify_citation(self, _citation: Dict[str, Any], sources: List[Dict[str, Any]], _judge_model: str) -> Dict[str, Any]:
+    async def _verify_citation(
+        self, _citation: dict[str, Any], sources: list[dict[str, Any]], _judge_model: str
+    ) -> dict[str, Any]:
         """Verify citation accuracy.
 
         Args:
@@ -1128,9 +1245,15 @@ class RAGTools:
         Returns:
             Citation verification results
         """
-        return {"accurate": True, "confidence": 0.9, "supporting_source": sources[0] if sources else None}
+        return {
+            "accurate": True,
+            "confidence": 0.9,
+            "supporting_source": sources[0] if sources else None,
+        }
 
-    async def _find_uncited_claims(self, _text: str, _sources: List[Dict[str, Any]], _judge_model: str) -> List[str]:
+    async def _find_uncited_claims(
+        self, _text: str, _sources: list[dict[str, Any]], _judge_model: str
+    ) -> list[str]:
         """Find claims that should be cited.
 
         Args:
@@ -1143,7 +1266,9 @@ class RAGTools:
         """
         return []  # Simplified implementation
 
-    async def _assess_citation_quality(self, _text: str, _sources: List[Dict[str, Any]], _judge_model: str) -> Dict[str, Any]:
+    async def _assess_citation_quality(
+        self, _text: str, _sources: list[dict[str, Any]], _judge_model: str
+    ) -> dict[str, Any]:
         """Overall citation quality assessment.
 
         Args:
@@ -1169,7 +1294,9 @@ class RAGTools:
         """
         return 0.7  # Simplified implementation
 
-    async def _simulate_retrieval(self, query: str, _system: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _simulate_retrieval(
+        self, query: str, _system: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Simulate retrieval system (placeholder).
 
         Args:
@@ -1181,7 +1308,14 @@ class RAGTools:
         """
         return [{"content": f"Retrieved document for {query}", "score": 0.8}]
 
-    async def _evaluate_query_retrieval(self, _query: str, _retrieved: List[Dict], _expected: List[Dict], _metrics: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _evaluate_query_retrieval(
+        self,
+        _query: str,
+        _retrieved: list[dict],
+        _expected: list[dict],
+        _metrics: list[str],
+        _judge_model: str,
+    ) -> dict[str, Any]:
         """Evaluate retrieval for single query.
 
         Args:
@@ -1196,7 +1330,9 @@ class RAGTools:
         """
         return {"precision": 0.8, "recall": 0.7, "mrr": 0.75, "ndcg": 0.8}
 
-    def _aggregate_system_performance(self, results: List[Dict[str, Any]], metrics: List[str]) -> Dict[str, Any]:
+    def _aggregate_system_performance(
+        self, results: list[dict[str, Any]], metrics: list[str]
+    ) -> dict[str, Any]:
         """Aggregate performance across queries.
 
         Args:
@@ -1217,7 +1353,9 @@ class RAGTools:
             }
         return aggregated
 
-    def _compare_retrieval_systems(self, results: Dict[str, Any], metrics: List[str]) -> Dict[str, Any]:
+    def _compare_retrieval_systems(
+        self, results: dict[str, Any], metrics: list[str]
+    ) -> dict[str, Any]:
         """Compare multiple retrieval systems.
 
         Args:
@@ -1233,7 +1371,9 @@ class RAGTools:
         # Simple ranking by average performance
         system_scores = {}
         for system_name, system_results in results.items():
-            avg_score = statistics.mean([system_results[metric]["mean"] for metric in metrics if metric in system_results])
+            avg_score = statistics.mean(
+                [system_results[metric]["mean"] for metric in metrics if metric in system_results]
+            )
             system_scores[system_name] = avg_score
 
         best_system = max(system_scores.items(), key=lambda x: x[1])[0]

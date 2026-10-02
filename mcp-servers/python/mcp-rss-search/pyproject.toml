@@ -66,10 +66,23 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+# feedparser ships no type stubs; the similarity extra (numpy,
+# sentence-transformers, scikit-learn, rank-bm25) is not installed in the
+# base env and is availability-probed at runtime.
+[[tool.mypy.overrides]]
+module = ["dateutil.*", "feedparser", "numpy", "rank_bm25", "sentence_transformers", "sklearn.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
 select = ["E", "W", "F", "B", "I", "N", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# B008: FastMCP tool parameters intentionally use Field() call defaults.
+"src/mcp_rss_search/server_fastmcp.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

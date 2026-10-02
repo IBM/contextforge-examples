@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Data visualization functionality using matplotlib, seaborn, and plotly.
 """
@@ -13,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 # Optional plotly import
 try:
@@ -82,7 +83,7 @@ class DataVisualizer:
         title: str | None = None,
         save_format: str = "png",
         interactive: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """
         Create a visualization based on the specified parameters.
@@ -139,7 +140,7 @@ class DataVisualizer:
                 **kwargs,
             )
 
-    def _setup_styles(self):
+    def _setup_styles(self) -> None:
         """Setup matplotlib and seaborn styles."""
         try:
             # Set matplotlib style
@@ -160,13 +161,13 @@ class DataVisualizer:
         self,
         df: pd.DataFrame,
         plot_type: str,
-        x_column: str,
+        x_column: str | None,
         y_column: str | None,
         color_column: str | None,
         facet_column: str | None,
         title: str | None,
         save_format: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Create a static plot using matplotlib/seaborn."""
 
@@ -223,12 +224,12 @@ class DataVisualizer:
         self,
         df: pd.DataFrame,
         plot_type: str,
-        x_column: str,
+        x_column: str | None,
         y_column: str | None,
         color_column: str | None,
         facet_column: str | None,
         title: str | None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Create an interactive plot using plotly."""
         if not PLOTLY_AVAILABLE:
@@ -284,8 +285,15 @@ class DataVisualizer:
             return {"plot_type": plot_type, "success": False, "error": str(e)}
 
     def _plot_histogram(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create histogram plot."""
         figsize = kwargs.get("figsize", self.default_figsize)
         bins = kwargs.get("bins", 30)
@@ -308,7 +316,7 @@ class DataVisualizer:
                     facet_data = df[df[facet_column] == facet][x_column].dropna()
                     axes[i].hist(facet_data, bins=bins, alpha=alpha, edgecolor="black")
                     axes[i].set_title(f"{facet}")
-                    axes[i].set_xlabel(x_column)
+                    axes[i].set_xlabel(x_column or "")
                     axes[i].set_ylabel("Frequency")
 
             # Hide empty subplots
@@ -334,7 +342,7 @@ class DataVisualizer:
                     df[x_column].dropna(), bins=bins, alpha=alpha, edgecolor="black"
                 )
 
-            ax.set_xlabel(x_column)
+            ax.set_xlabel(x_column or "")
             ax.set_ylabel("Frequency")
             axes = ax
 
@@ -354,8 +362,15 @@ class DataVisualizer:
         return fig, axes, plot_info
 
     def _plot_scatter(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create scatter plot."""
         if not y_column:
             raise ValueError("Scatter plot requires y_column")
@@ -394,7 +409,7 @@ class DataVisualizer:
         else:
             ax.scatter(df[x_column], df[y_column], alpha=alpha)
 
-        ax.set_xlabel(x_column)
+        ax.set_xlabel(x_column or "")
         ax.set_ylabel(y_column)
 
         if title:
@@ -428,8 +443,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_box(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create box plot."""
         figsize = kwargs.get("figsize", self.default_figsize)
 
@@ -464,8 +486,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_heatmap(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create heatmap (correlation matrix)."""
         figsize = kwargs.get("figsize", (8, 8))
 
@@ -504,8 +533,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_line(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create line plot."""
         if not y_column:
             raise ValueError("Line plot requires y_column")
@@ -528,7 +564,7 @@ class DataVisualizer:
             sorted_df = df.sort_values(x_column)
             ax.plot(sorted_df[x_column], sorted_df[y_column], marker="o")
 
-        ax.set_xlabel(x_column)
+        ax.set_xlabel(x_column or "")
         ax.set_ylabel(y_column)
 
         if title:
@@ -547,8 +583,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_bar(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create bar plot."""
         figsize = kwargs.get("figsize", self.default_figsize)
 
@@ -587,8 +630,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_violin(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create violin plot."""
         figsize = kwargs.get("figsize", self.default_figsize)
 
@@ -618,8 +668,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_pairplot(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create pair plot."""
         numeric_cols = df.select_dtypes(include=[np.number]).columns[
             :5
@@ -643,8 +700,15 @@ class DataVisualizer:
         return g.fig, g.axes, plot_info
 
     def _plot_time_series(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create time series plot."""
         if not y_column:
             raise ValueError("Time series plot requires y_column")
@@ -671,7 +735,7 @@ class DataVisualizer:
         else:
             ax.plot(df_copy[x_column], df_copy[y_column], marker=".")
 
-        ax.set_xlabel(x_column)
+        ax.set_xlabel(x_column or "")
         ax.set_ylabel(y_column)
 
         # Format x-axis dates
@@ -697,8 +761,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_distribution(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create distribution plot."""
         figsize = kwargs.get("figsize", self.default_figsize)
 
@@ -724,8 +795,15 @@ class DataVisualizer:
         return fig, ax, plot_info
 
     def _plot_correlation(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ) -> tuple[plt.Figure, plt.Axes, dict]:
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes, dict[str, Any]]:
         """Create correlation plot (same as heatmap)."""
         return self._plot_heatmap(
             df, x_column, y_column, color_column, facet_column, title, **kwargs
@@ -741,8 +819,15 @@ class DataVisualizer:
 
     # Plotly interactive plot methods (simplified)
     def _plotly_histogram(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive histogram with plotly."""
         fig = px.histogram(
             df,
@@ -755,8 +840,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_scatter(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive scatter plot with plotly."""
         fig = px.scatter(
             df,
@@ -770,8 +862,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_box(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive box plot with plotly."""
         fig = px.box(
             df,
@@ -784,8 +883,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_line(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive line plot with plotly."""
         fig = px.line(
             df,
@@ -798,8 +904,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_bar(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive bar plot with plotly."""
         fig = px.bar(
             df,
@@ -812,8 +925,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_heatmap(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive heatmap with plotly."""
         numeric_df = df.select_dtypes(include=[np.number])
         correlation_matrix = numeric_df.corr()
@@ -827,8 +947,15 @@ class DataVisualizer:
         return fig, plot_info
 
     def _plotly_time_series(
-        self, df, x_column, y_column, color_column, facet_column, title, **kwargs
-    ):
+        self,
+        df: pd.DataFrame,
+        x_column: str | None,
+        y_column: str | None,
+        color_column: str | None,
+        facet_column: str | None,
+        title: str | None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """Create interactive time series plot with plotly."""
         df_copy = df.copy()
         df_copy[x_column] = pd.to_datetime(df_copy[x_column])

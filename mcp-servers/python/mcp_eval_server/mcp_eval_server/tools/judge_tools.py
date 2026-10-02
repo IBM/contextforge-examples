@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/judge_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -12,7 +11,7 @@ import asyncio
 import logging
 import os
 import statistics
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Third-Party
 import yaml
@@ -61,7 +60,7 @@ except ImportError:
 class JudgeTools:
     """Tools for LLM-as-a-judge evaluation."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """Initialize judge tools.
 
         Args:
@@ -69,7 +68,9 @@ class JudgeTools:
         """
         self.logger = logging.getLogger(__name__)
         self.judges = {}
-        self.config_path = config_path or os.path.join(os.path.dirname(__file__), "..", "config", "models.yaml")
+        self.config_path = config_path or os.path.join(
+            os.path.dirname(__file__), "..", "config", "models.yaml"
+        )
         self._load_judges()
 
     def _load_judges(self) -> None:
@@ -79,7 +80,7 @@ class JudgeTools:
         based on the configuration file or default settings if file is missing.
         """
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
         except FileNotFoundError:
             # Default configuration if file not found
@@ -125,7 +126,10 @@ class JudgeTools:
                 for model_name, model_config in config.get("models", {}).get("ollama", {}).items():
                     try:
                         self.judges[model_name] = OllamaJudge(model_config)
-                        self.logger.debug(f"✅ Loaded OLLAMA judge: {model_name} (connectivity will be tested during use)")
+                        self.logger.debug(
+                            f"✅ Loaded OLLAMA judge: {model_name} (connectivity will be tested "
+                            f"during use)"
+                        )
                     except Exception as e:
                         self.logger.warning(f"⚠️  Could not load OLLAMA judge {model_name}: {e}")
                         print(f"Warning: Could not load OLLAMA judge {model_name}: {e}")
@@ -161,12 +165,14 @@ class JudgeTools:
                         self.logger.warning(f"⚠️  Could not load Watsonx judge {model_name}: {e}")
                         print(f"Warning: Could not load Watsonx judge {model_name}: {e}")
             else:
-                self.logger.debug("WATSONX_API_KEY or WATSONX_PROJECT_ID not configured, skipping Watsonx judges")
+                self.logger.debug(
+                    "WATSONX_API_KEY or WATSONX_PROJECT_ID not configured, skipping Watsonx judges"
+                )
 
         # Always include rule-based judge
         self.judges["rule-based"] = RuleBasedJudge({"model_name": "rule-based"})
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """Get default configuration when config file is missing.
 
         Returns:
@@ -194,7 +200,7 @@ class JudgeTools:
             }
         }
 
-    def get_available_judges(self) -> List[str]:
+    def get_available_judges(self) -> list[str]:
         """Get list of available judge models.
 
         Returns:
@@ -205,12 +211,12 @@ class JudgeTools:
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[Dict[str, Any]],
-        rubric: Dict[str, Any],
+        criteria: list[dict[str, Any]],
+        rubric: dict[str, Any],
         judge_model: str = "gpt-4o-mini",
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate response with specified judge model.
 
         Args:
@@ -232,16 +238,27 @@ class JudgeTools:
         judge = self._get_judge_with_fallback(judge_model)
 
         # Log the evaluation call
-        self.logger.info(f"📊 Evaluating response with judge: {judge_model} (actual: {judge.model_name})")
+        self.logger.info(
+            f"📊 Evaluating response with judge: {judge_model} (actual: {judge.model_name})"
+        )
         self.logger.debug(f"   Response length: {len(response)} chars")
         self.logger.debug(f"   Criteria: {[c.name for c in criteria_objs]}")
         self.logger.debug(f"   Use CoT: {use_cot}")
 
         # Perform evaluation
-        result = await judge.evaluate_response(response=response, criteria=criteria_objs, rubric=rubric_obj, context=context, use_cot=use_cot)
+        result = await judge.evaluate_response(
+            response=response,
+            criteria=criteria_objs,
+            rubric=rubric_obj,
+            context=context,
+            use_cot=use_cot,
+        )
 
         # Log the result with model response details
-        self.logger.info(f"✅ Evaluation completed - Overall score: {result.overall_score:.2f}, Confidence: {result.confidence:.2f}")
+        self.logger.info(
+            f"✅ Evaluation completed - Overall score: {result.overall_score:.2f}, Confidence: "
+            f"{result.confidence:.2f}"
+        )
 
         # Log model reasoning (truncated for readability)
         if result.reasoning:
@@ -250,17 +267,24 @@ class JudgeTools:
                 self.logger.debug(f"   🧠 {criterion}: {truncated_reasoning}")
 
         # Convert result to dict for MCP response
-        return {"scores": result.scores, "reasoning": result.reasoning, "overall_score": result.overall_score, "confidence": result.confidence, "metadata": result.metadata, "judge_model": judge_model}
+        return {
+            "scores": result.scores,
+            "reasoning": result.reasoning,
+            "overall_score": result.overall_score,
+            "confidence": result.confidence,
+            "metadata": result.metadata,
+            "judge_model": judge_model,
+        }
 
     async def pairwise_comparison(
         self,
         response_a: str,
         response_b: str,
-        criteria: List[Dict[str, Any]],
+        criteria: list[dict[str, Any]],
         judge_model: str = "gpt-4o-mini",
-        context: Optional[str] = None,
+        context: str | None = None,
         position_bias_mitigation: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compare two responses and determine which is better.
 
         Args:
@@ -278,15 +302,26 @@ class JudgeTools:
         judge = self._get_judge_with_fallback(judge_model)
 
         # Log the comparison call
-        self.logger.info(f"⚖️  Pairwise comparison with judge: {judge_model} (actual: {judge.model_name})")
+        self.logger.info(
+            f"⚖️  Pairwise comparison with judge: {judge_model} (actual: {judge.model_name})"
+        )
         self.logger.debug(f"   Response A length: {len(response_a)} chars")
         self.logger.debug(f"   Response B length: {len(response_b)} chars")
         self.logger.debug(f"   Position bias mitigation: {position_bias_mitigation}")
 
-        result = await judge.pairwise_comparison(response_a=response_a, response_b=response_b, criteria=criteria_objs, context=context, position_bias_mitigation=position_bias_mitigation)
+        result = await judge.pairwise_comparison(
+            response_a=response_a,
+            response_b=response_b,
+            criteria=criteria_objs,
+            context=context,
+            position_bias_mitigation=position_bias_mitigation,
+        )
 
         # Log the result
-        self.logger.info(f"✅ Comparison completed - Winner: {result.winner}, Confidence: {result.confidence_score:.2f}")
+        self.logger.info(
+            f"✅ Comparison completed - Winner: {result.winner}, Confidence: "
+            f"{result.confidence_score:.2f}"
+        )
 
         return {
             "winner": result.winner,
@@ -299,12 +334,12 @@ class JudgeTools:
 
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[Dict[str, Any]],
+        responses: list[str],
+        criteria: list[dict[str, Any]],
         judge_model: str = "gpt-4o-mini",
-        context: Optional[str] = None,
+        context: str | None = None,
         ranking_method: str = "tournament",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Rank multiple responses from best to worst.
 
         Args:
@@ -326,7 +361,12 @@ class JudgeTools:
         criteria_objs = [EvaluationCriteria(**c) for c in criteria]
         judge = self._get_judge_with_fallback(judge_model)
 
-        result = await judge.rank_responses(responses=responses, criteria=criteria_objs, context=context, ranking_method=ranking_method)
+        result = await judge.rank_responses(
+            responses=responses,
+            criteria=criteria_objs,
+            context=context,
+            ranking_method=ranking_method,
+        )
 
         return {
             "rankings": result.rankings,
@@ -344,7 +384,7 @@ class JudgeTools:
         judge_model: str = "gpt-4o-mini",
         evaluation_type: str = "factuality",
         tolerance: str = "moderate",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate response against a gold standard reference.
 
         Args:
@@ -359,7 +399,12 @@ class JudgeTools:
         """
         judge = self._get_judge_with_fallback(judge_model)
 
-        result = await judge.evaluate_with_reference(response=response, reference=reference, evaluation_type=evaluation_type, tolerance=tolerance)
+        result = await judge.evaluate_with_reference(
+            response=response,
+            reference=reference,
+            evaluation_type=evaluation_type,
+            tolerance=tolerance,
+        )
 
         return {
             "similarity_score": result.similarity_score,
@@ -374,14 +419,14 @@ class JudgeTools:
 
     async def batch_evaluate(
         self,
-        responses: List[str],
-        criteria: List[Dict[str, Any]],
-        rubric: Dict[str, Any],
+        responses: list[str],
+        criteria: list[dict[str, Any]],
+        rubric: dict[str, Any],
         judge_model: str = "gpt-4o-mini",
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
         max_concurrent: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Evaluate multiple responses in parallel.
 
         Args:
@@ -398,9 +443,16 @@ class JudgeTools:
         """
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def evaluate_single(response: str) -> Dict[str, Any]:
+        async def evaluate_single(response: str) -> dict[str, Any]:
             async with semaphore:
-                return await self.evaluate_response(response=response, criteria=criteria, rubric=rubric, judge_model=judge_model, context=context, use_cot=use_cot)
+                return await self.evaluate_response(
+                    response=response,
+                    criteria=criteria,
+                    rubric=rubric,
+                    judge_model=judge_model,
+                    context=context,
+                    use_cot=use_cot,
+                )
 
         tasks = [evaluate_single(response) for response in responses]
         results = await asyncio.gather(*tasks)
@@ -410,12 +462,12 @@ class JudgeTools:
     async def multi_judge_evaluation(
         self,
         response: str,
-        criteria: List[Dict[str, Any]],
-        rubric: Dict[str, Any],
-        judge_models: List[str],
-        context: Optional[str] = None,
+        criteria: list[dict[str, Any]],
+        rubric: dict[str, Any],
+        judge_models: list[str],
+        context: str | None = None,
         use_cot: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate response with multiple judges for consensus.
 
         Args:
@@ -434,7 +486,16 @@ class JudgeTools:
         """
         tasks = []
         for judge_model in judge_models:
-            tasks.append(self.evaluate_response(response=response, criteria=criteria, rubric=rubric, judge_model=judge_model, context=context, use_cot=use_cot))
+            tasks.append(
+                self.evaluate_response(
+                    response=response,
+                    criteria=criteria,
+                    rubric=rubric,
+                    judge_model=judge_model,
+                    context=context,
+                    use_cot=use_cot,
+                )
+            )
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -498,7 +559,16 @@ class JudgeTools:
             return self.judges[judge_model]
 
         # Try common fallbacks
-        fallbacks = ["claude-4-1-bedrock", "gemini-1-5-pro", "gpt-4o-mini", "gpt-4", "claude-3-sonnet", "llama-3-1-70b-watsonx", "gpt-3.5-turbo", "rule-based"]
+        fallbacks = [
+            "claude-4-1-bedrock",
+            "gemini-1-5-pro",
+            "gpt-4o-mini",
+            "gpt-4",
+            "claude-3-sonnet",
+            "llama-3-1-70b-watsonx",
+            "gpt-3.5-turbo",
+            "rule-based",
+        ]
         for fallback in fallbacks:
             if fallback in self.judges:
                 print(f"Warning: Judge {judge_model} not available, using {fallback}")
@@ -511,7 +581,7 @@ class JudgeTools:
 
         raise ValueError(f"No judges available. Requested: {judge_model}")
 
-    def get_judge_info(self, judge_model: str) -> Dict[str, Any]:
+    def get_judge_info(self, judge_model: str) -> dict[str, Any]:
         """Get information about a judge model.
 
         Args:
@@ -530,7 +600,14 @@ class JudgeTools:
         # For OLLAMA judges, check actual health
         available = True
         if provider == "ollama" and hasattr(judge, "is_healthy"):
-            # Note: This is synchronous for compatibility, real health check happens during evaluation
+            # Note: This is synchronous for compatibility, real health check happens during
+            # evaluation
             available = True  # Always return True here, health check happens during actual usage
 
-        return {"model_name": judge.model_name, "temperature": judge.temperature, "max_tokens": judge.max_tokens, "provider": provider, "available": available}
+        return {
+            "model_name": judge.model_name,
+            "temperature": judge.temperature,
+            "max_tokens": judge.max_tokens,
+            "provider": provider,
+            "available": available,
+        }

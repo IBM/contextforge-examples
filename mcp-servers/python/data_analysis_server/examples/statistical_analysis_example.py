@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Statistical Analysis Example for MCP Data Analysis Server
 
@@ -108,7 +107,8 @@ async def main():
     # Step 3: T-test analysis
     print("\n📊 Step 3: Performing t-test analysis...")
     print(
-        "   Note: T-test requires exactly 2 groups, but dataset has 3 segments (Basic, Premium, Standard)"
+        "   Note: T-test requires exactly 2 groups, but dataset has 3 segments"
+        " (Basic, Premium, Standard)"
     )
 
     ttest_result = await client.call_tool(
@@ -213,7 +213,8 @@ async def main():
         if "metadata" in viz_info:
             metadata = viz_info["metadata"]
             print(
-                f"   • Size: {metadata.get('width', 'N/A')}x{metadata.get('height', 'N/A')}"
+                f"   • Size: {metadata.get('width', 'N/A')}x"
+                f"{metadata.get('height', 'N/A')}"
             )
     else:
         print(f"❌ Correlation visualization failed: {correlation_viz.get('error')}")

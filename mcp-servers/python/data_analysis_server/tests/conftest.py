@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Pytest configuration and shared fixtures for tests.
 """
@@ -90,7 +89,7 @@ def stock_dataframe():
         returns = np.random.normal(0.001, 0.02, len(dates))
         prices = 100 * np.cumprod(1 + returns)
 
-        for i, (date, price) in enumerate(zip(dates, prices, strict=False)):
+        for date, price in zip(dates, prices, strict=False):
             # Add some randomness to high/low
             high = price * np.random.uniform(1.01, 1.05)
             low = price * np.random.uniform(0.95, 0.99)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Visualization Showcase Example for MCP Data Analysis Server
 
@@ -88,7 +87,8 @@ async def main():
         print(f"✅ Created scatter plot: {viz_info.get('filename', 'N/A')}")
         metadata = viz_info.get("metadata", {})
         print(
-            f"   • Dimensions: {metadata.get('width', 800)}x{metadata.get('height', 600)}"
+            f"   • Dimensions: {metadata.get('width', 800)}x"
+            f"{metadata.get('height', 600)}"
         )
     else:
         print(f"❌ Scatter plot failed: {scatter_result.get('error')}")

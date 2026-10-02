@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Tests for MCP RSS Search Server."""
 
 import socket
 
 import pytest
-from httpx import AsyncClient, Response
 from pytest_httpx import HTTPXMock
 
 from mcp_rss_search.server_fastmcp import RSSParser
@@ -76,7 +74,15 @@ def patch_public_dns(monkeypatch):
     """
 
     def fake_getaddrinfo(host, port, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (PUBLIC_TEST_IP, port or 0))]
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                (PUBLIC_TEST_IP, port or 0),
+            )
+        ]
 
     monkeypatch.setattr("mcp_rss_search.server_fastmcp.socket.getaddrinfo", fake_getaddrinfo)
 
@@ -200,9 +206,7 @@ class TestRSSParser:
         assert len(results) == 3
 
         # Search for specific episode number
-        results = rss_parser.search_entries(
-            feed_data, r"Episode 2:", fields=["title"], regex=True
-        )
+        results = rss_parser.search_entries(feed_data, r"Episode 2:", fields=["title"], regex=True)
         assert len(results) == 1
 
     @pytest.mark.asyncio
@@ -318,9 +322,7 @@ class TestRSSParser:
         """Test HTTP error handling."""
         httpx_mock.add_response(status_code=404)
 
-        result = await rss_parser.fetch_feed(
-            "https://example.com/notfound.rss", use_cache=False
-        )
+        result = await rss_parser.fetch_feed("https://example.com/notfound.rss", use_cache=False)
 
         assert result["success"] is False
         assert "error" in result

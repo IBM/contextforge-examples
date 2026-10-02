@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/tools/privacy_tools.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ MCP tools for privacy evaluation.
 # Standard
 import re
 import statistics
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Local
 from .judge_tools import JudgeTools
@@ -19,7 +18,7 @@ from .judge_tools import JudgeTools
 class PrivacyTools:
     """Tools for privacy evaluation and PII detection."""
 
-    def __init__(self, judge_tools: Optional[JudgeTools] = None):
+    def __init__(self, judge_tools: JudgeTools | None = None):
         """Initialize privacy tools.
 
         Args:
@@ -62,17 +61,22 @@ class PrivacyTools:
             "medical": ["medical_record", "diagnosis", "medication", "health_id"],
             "biometric": ["fingerprint", "facial_recognition", "voice_print", "dna"],
             "behavioral": ["browsing_history", "location_data", "preferences", "activity_logs"],
-            "sensitive_attributes": ["race", "religion", "political_affiliation", "sexual_orientation"],
+            "sensitive_attributes": [
+                "race",
+                "religion",
+                "political_affiliation",
+                "sexual_orientation",
+            ],
         }
 
     async def detect_pii_exposure(
         self,
         text: str,
-        pii_types: List[str] = None,
+        pii_types: list[str] = None,
         sensitivity_level: str = "high",
         include_context: bool = True,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Detect personally identifiable information in text.
 
         Args:
@@ -137,18 +141,22 @@ class PrivacyTools:
                 "total_pii_items": len(detected_pii),
                 "pii_types_found": list(set(item["type"] for item in detected_pii)),
                 "sensitivity_level": sensitivity_level,
-                "highest_risk_type": max(detected_pii, key=lambda x: self._assess_pii_risk_level(x["type"]))["type"] if detected_pii else None,
+                "highest_risk_type": (
+                    max(detected_pii, key=lambda x: self._assess_pii_risk_level(x["type"]))["type"]
+                    if detected_pii
+                    else None
+                ),
             },
             "recommendations": self._generate_pii_recommendations(adjusted_risk, detected_pii),
         }
 
     async def assess_data_minimization(
         self,
-        collected_data: Dict[str, Any],
+        collected_data: dict[str, Any],
         stated_purpose: str,
-        data_categories: List[str] = None,
+        data_categories: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate if data collection follows minimization principles.
 
         Args:
@@ -161,13 +169,21 @@ class PrivacyTools:
             Data minimization analysis
         """
         if data_categories is None:
-            data_categories = ["personal_identifiers", "financial", "medical", "behavioral", "sensitive_attributes"]
+            data_categories = [
+                "personal_identifiers",
+                "financial",
+                "medical",
+                "behavioral",
+                "sensitive_attributes",
+            ]
 
         # Categorize collected data
         data_categorization = self._categorize_collected_data(collected_data, data_categories)
 
         # Assess necessity for stated purpose
-        necessity_assessment = await self._assess_data_necessity(data_categorization, stated_purpose, judge_model)
+        necessity_assessment = await self._assess_data_necessity(
+            data_categorization, stated_purpose, judge_model
+        )
 
         # Calculate minimization score
         necessary_data = sum(1 for assessment in necessity_assessment if assessment["necessary"])
@@ -175,10 +191,14 @@ class PrivacyTools:
         minimization_score = necessary_data / total_data if total_data > 0 else 1.0
 
         # Identify excessive data collection
-        excessive_data = [assessment for assessment in necessity_assessment if not assessment["necessary"]]
+        excessive_data = [
+            assessment for assessment in necessity_assessment if not assessment["necessary"]
+        ]
 
         # Purpose alignment analysis
-        purpose_alignment = await self._analyze_purpose_alignment(collected_data, stated_purpose, judge_model)
+        purpose_alignment = await self._analyze_purpose_alignment(
+            collected_data, stated_purpose, judge_model
+        )
 
         return {
             "minimization_score": minimization_score,
@@ -193,16 +213,18 @@ class PrivacyTools:
                 "stated_purpose": stated_purpose,
                 "data_categories": data_categories,
             },
-            "recommendations": self._generate_minimization_recommendations(minimization_score, excessive_data),
+            "recommendations": self._generate_minimization_recommendations(
+                minimization_score, excessive_data
+            ),
         }
 
     async def evaluate_consent_compliance(
         self,
         consent_text: str,
-        data_practices: Dict[str, Any],
-        compliance_standards: List[str] = None,
+        data_practices: dict[str, Any],
+        compliance_standards: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess consent mechanisms and compliance with privacy regulations.
 
         Args:
@@ -223,7 +245,9 @@ class PrivacyTools:
         # Check compliance with each standard
         compliance_results = {}
         for standard in compliance_standards:
-            compliance = await self._check_standard_compliance(consent_text, data_practices, standard, judge_model)
+            compliance = await self._check_standard_compliance(
+                consent_text, data_practices, standard, judge_model
+            )
             compliance_results[standard] = compliance
 
         # Identify consent gaps
@@ -241,10 +265,20 @@ class PrivacyTools:
             "analysis": {
                 "compliance_standards": compliance_standards,
                 "consent_clarity_score": consent_analysis.get("clarity_score", 0.0),
-                "weakest_compliance": min(compliance_results.items(), key=lambda x: x[1]["compliance_score"])[0] if compliance_results else None,
-                "strongest_compliance": max(compliance_results.items(), key=lambda x: x[1]["compliance_score"])[0] if compliance_results else None,
+                "weakest_compliance": (
+                    min(compliance_results.items(), key=lambda x: x[1]["compliance_score"])[0]
+                    if compliance_results
+                    else None
+                ),
+                "strongest_compliance": (
+                    max(compliance_results.items(), key=lambda x: x[1]["compliance_score"])[0]
+                    if compliance_results
+                    else None
+                ),
             },
-            "recommendations": self._generate_compliance_recommendations(overall_compliance, consent_gaps, compliance_results),
+            "recommendations": self._generate_compliance_recommendations(
+                overall_compliance, consent_gaps, compliance_results
+            ),
         }
 
     async def measure_anonymization_effectiveness(
@@ -254,7 +288,7 @@ class PrivacyTools:
         anonymization_method: str = "unknown",
         reidentification_risk_threshold: float = 0.1,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate effectiveness of data anonymization techniques.
 
         Args:
@@ -271,13 +305,17 @@ class PrivacyTools:
         information_loss = self._calculate_information_loss(original_data, anonymized_data)
 
         # Assess re-identification risk
-        reidentification_risk = await self._assess_reidentification_risk(original_data, anonymized_data, judge_model)
+        reidentification_risk = await self._assess_reidentification_risk(
+            original_data, anonymized_data, judge_model
+        )
 
         # Check for quasi-identifiers
         quasi_identifiers = self._detect_quasi_identifiers(anonymized_data)
 
         # Evaluate anonymization quality
-        anonymization_quality = await self._evaluate_anonymization_quality(original_data, anonymized_data, anonymization_method, judge_model)
+        anonymization_quality = await self._evaluate_anonymization_quality(
+            original_data, anonymized_data, anonymization_method, judge_model
+        )
 
         # Calculate effectiveness score
         # Good anonymization should have low re-identification risk but preserve utility
@@ -302,17 +340,19 @@ class PrivacyTools:
                 "privacy_protection_level": risk_score,
                 "quasi_identifier_count": len(quasi_identifiers),
             },
-            "recommendations": self._generate_anonymization_recommendations(effectiveness_score, reidentification_risk, information_loss),
+            "recommendations": self._generate_anonymization_recommendations(
+                effectiveness_score, reidentification_risk, information_loss
+            ),
         }
 
     async def detect_data_leakage(
         self,
         input_data: str,
         output_data: str,
-        expected_data_flow: Dict[str, Any] = None,
-        leakage_types: List[str] = None,
+        expected_data_flow: dict[str, Any] = None,
+        leakage_types: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Identify unintended data exposure or leakage.
 
         Args:
@@ -326,19 +366,30 @@ class PrivacyTools:
             Data leakage analysis
         """
         if leakage_types is None:
-            leakage_types = ["direct_exposure", "inference_leakage", "aggregation_leakage", "temporal_leakage"]
+            leakage_types = [
+                "direct_exposure",
+                "inference_leakage",
+                "aggregation_leakage",
+                "temporal_leakage",
+            ]
 
         # Detect direct data exposure
         direct_leakage = self._detect_direct_leakage(input_data, output_data)
 
         # Check for inference-based leakage
-        inference_leakage = await self._detect_inference_leakage(input_data, output_data, judge_model)
+        inference_leakage = await self._detect_inference_leakage(
+            input_data, output_data, judge_model
+        )
 
         # Analyze unexpected data inclusion
-        unexpected_data = self._identify_unexpected_data(input_data, output_data, expected_data_flow)
+        unexpected_data = self._identify_unexpected_data(
+            input_data, output_data, expected_data_flow
+        )
 
         # LLM assessment of data leakage
-        llm_leakage_assessment = await self._llm_assess_data_leakage(input_data, output_data, leakage_types, judge_model)
+        llm_leakage_assessment = await self._llm_assess_data_leakage(
+            input_data, output_data, leakage_types, judge_model
+        )
 
         # Calculate leakage severity
         leakage_indicators = len(direct_leakage) + len(inference_leakage) + len(unexpected_data)
@@ -372,16 +423,18 @@ class PrivacyTools:
                 "output_length": len(output_data),
                 "expected_data_flow": expected_data_flow is not None,
             },
-            "recommendations": self._generate_leakage_recommendations(leakage_score, direct_leakage, inference_leakage),
+            "recommendations": self._generate_leakage_recommendations(
+                leakage_score, direct_leakage, inference_leakage
+            ),
         }
 
     async def assess_consent_clarity(
         self,
         consent_text: str,
         target_audience: str = "general_public",
-        clarity_dimensions: List[str] = None,
+        clarity_dimensions: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate clarity and comprehensibility of consent notices.
 
         Args:
@@ -394,7 +447,13 @@ class PrivacyTools:
             Consent clarity analysis
         """
         if clarity_dimensions is None:
-            clarity_dimensions = ["readability", "completeness", "specificity", "accessibility", "actionability"]
+            clarity_dimensions = [
+                "readability",
+                "completeness",
+                "specificity",
+                "accessibility",
+                "actionability",
+            ]
 
         # Analyze readability metrics
         readability_analysis = self._analyze_consent_readability(consent_text)
@@ -402,7 +461,9 @@ class PrivacyTools:
         # Assess each clarity dimension
         dimension_scores = {}
         for dimension in clarity_dimensions:
-            score = await self._assess_clarity_dimension(consent_text, dimension, target_audience, judge_model)
+            score = await self._assess_clarity_dimension(
+                consent_text, dimension, target_audience, judge_model
+            )
             dimension_scores[dimension] = score
 
         # Check for required elements
@@ -431,16 +492,18 @@ class PrivacyTools:
                 "issues_identified": len(clarity_issues),
                 "readability_grade": readability_analysis.get("grade_level", "unknown"),
             },
-            "recommendations": self._generate_clarity_recommendations(adjusted_clarity, clarity_issues, readability_analysis),
+            "recommendations": self._generate_clarity_recommendations(
+                adjusted_clarity, clarity_issues, readability_analysis
+            ),
         }
 
     async def evaluate_data_retention_compliance(
         self,
-        retention_policies: Dict[str, Any],
-        actual_practices: Dict[str, Any],
-        regulatory_requirements: List[str] = None,
+        retention_policies: dict[str, Any],
+        actual_practices: dict[str, Any],
+        regulatory_requirements: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess data retention policy compliance and effectiveness.
 
         Args:
@@ -453,19 +516,30 @@ class PrivacyTools:
             Data retention compliance analysis
         """
         if regulatory_requirements is None:
-            regulatory_requirements = ["gdpr_erasure", "ccpa_deletion", "coppa_retention", "sector_specific"]
+            regulatory_requirements = [
+                "gdpr_erasure",
+                "ccpa_deletion",
+                "coppa_retention",
+                "sector_specific",
+            ]
 
         # Compare policies vs practices
-        policy_practice_alignment = self._compare_policies_practices(retention_policies, actual_practices)
+        policy_practice_alignment = self._compare_policies_practices(
+            retention_policies, actual_practices
+        )
 
         # Check regulatory compliance
         regulatory_compliance = {}
         for requirement in regulatory_requirements:
-            compliance = await self._check_retention_compliance(retention_policies, actual_practices, requirement, judge_model)
+            compliance = await self._check_retention_compliance(
+                retention_policies, actual_practices, requirement, judge_model
+            )
             regulatory_compliance[requirement] = compliance
 
         # Identify retention violations
-        retention_violations = self._identify_retention_violations(retention_policies, actual_practices)
+        retention_violations = self._identify_retention_violations(
+            retention_policies, actual_practices
+        )
 
         # Calculate compliance score
         compliance_scores = [comp["compliance_score"] for comp in regulatory_compliance.values()]
@@ -487,16 +561,18 @@ class PrivacyTools:
                 "violations_found": len(retention_violations),
                 "alignment_score": alignment_score,
             },
-            "recommendations": self._generate_retention_recommendations(adjusted_compliance, retention_violations, regulatory_compliance),
+            "recommendations": self._generate_retention_recommendations(
+                adjusted_compliance, retention_violations, regulatory_compliance
+            ),
         }
 
     async def assess_privacy_by_design(
         self,
         system_description: str,
-        privacy_controls: List[Dict[str, Any]],
-        design_principles: List[str] = None,
+        privacy_controls: list[dict[str, Any]],
+        design_principles: list[str] = None,
         judge_model: str = "gpt-4o-mini",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate privacy-by-design implementation in systems.
 
         Args:
@@ -509,26 +585,42 @@ class PrivacyTools:
             Privacy-by-design analysis
         """
         if design_principles is None:
-            design_principles = ["proactive", "privacy_default", "privacy_embedded", "full_functionality", "end_to_end_security", "visibility_transparency", "user_privacy"]
+            design_principles = [
+                "proactive",
+                "privacy_default",
+                "privacy_embedded",
+                "full_functionality",
+                "end_to_end_security",
+                "visibility_transparency",
+                "user_privacy",
+            ]
 
         # Assess each design principle
         principle_assessments = {}
         for principle in design_principles:
-            assessment = await self._assess_design_principle(system_description, privacy_controls, principle, judge_model)
+            assessment = await self._assess_design_principle(
+                system_description, privacy_controls, principle, judge_model
+            )
             principle_assessments[principle] = assessment
 
         # Evaluate privacy controls effectiveness
         controls_effectiveness = self._evaluate_privacy_controls(privacy_controls)
 
         # Check for privacy gaps
-        privacy_gaps = await self._identify_privacy_gaps(system_description, privacy_controls, judge_model)
+        privacy_gaps = await self._identify_privacy_gaps(
+            system_description, privacy_controls, judge_model
+        )
 
         # Calculate overall privacy-by-design score
         principle_scores = [assessment["score"] for assessment in principle_assessments.values()]
         controls_score = controls_effectiveness.get("overall_effectiveness", 0.0)
 
         # Weight: 60% principles, 40% controls implementation
-        overall_privacy_design = (statistics.mean(principle_scores) * 0.6 + controls_score * 0.4) if principle_scores else 0.0
+        overall_privacy_design = (
+            (statistics.mean(principle_scores) * 0.6 + controls_score * 0.4)
+            if principle_scores
+            else 0.0
+        )
 
         return {
             "overall_privacy_design": overall_privacy_design,
@@ -539,10 +631,20 @@ class PrivacyTools:
                 "design_principles": design_principles,
                 "controls_implemented": len(privacy_controls),
                 "gaps_identified": len(privacy_gaps),
-                "weakest_principle": min(principle_assessments.items(), key=lambda x: x[1]["score"])[0] if principle_assessments else None,
-                "strongest_principle": max(principle_assessments.items(), key=lambda x: x[1]["score"])[0] if principle_assessments else None,
+                "weakest_principle": (
+                    min(principle_assessments.items(), key=lambda x: x[1]["score"])[0]
+                    if principle_assessments
+                    else None
+                ),
+                "strongest_principle": (
+                    max(principle_assessments.items(), key=lambda x: x[1]["score"])[0]
+                    if principle_assessments
+                    else None
+                ),
             },
-            "recommendations": self._generate_privacy_design_recommendations(overall_privacy_design, privacy_gaps, principle_assessments),
+            "recommendations": self._generate_privacy_design_recommendations(
+                overall_privacy_design, privacy_gaps, principle_assessments
+            ),
         }
 
     # Helper methods for privacy evaluation
@@ -588,7 +690,9 @@ class PrivacyTools:
             return "medium"
         return "low"
 
-    async def _llm_pii_assessment(self, text: str, pii_types: List[str], judge_model: str) -> Dict[str, Any]:
+    async def _llm_pii_assessment(
+        self, text: str, pii_types: list[str], judge_model: str
+    ) -> dict[str, Any]:
         """Use LLM to assess PII presence.
 
         Args:
@@ -633,7 +737,9 @@ class PrivacyTools:
         except Exception:
             return {"pii_score": 0.0, "reasoning": {"error": "Assessment failed"}}
 
-    def _categorize_collected_data(self, data: Dict[str, Any], categories: List[str]) -> Dict[str, Any]:
+    def _categorize_collected_data(
+        self, data: dict[str, Any], categories: list[str]
+    ) -> dict[str, Any]:
         """Categorize collected data by privacy categories.
 
         Args:
@@ -649,20 +755,37 @@ class PrivacyTools:
         for field, value in data.items():
             field_lower = field.lower()
 
-            if any(identifier in field_lower for identifier in ["name", "email", "phone", "address"]):
-                categorization["personal_identifiers"].append({"field": field, "value": str(value)[:50]})
-            elif any(financial in field_lower for financial in ["card", "payment", "account", "bank"]):
+            if any(
+                identifier in field_lower for identifier in ["name", "email", "phone", "address"]
+            ):
+                categorization["personal_identifiers"].append(
+                    {"field": field, "value": str(value)[:50]}
+                )
+            elif any(
+                financial in field_lower for financial in ["card", "payment", "account", "bank"]
+            ):
                 categorization["financial"].append({"field": field, "value": str(value)[:50]})
-            elif any(medical in field_lower for medical in ["health", "medical", "diagnosis", "medication"]):
+            elif any(
+                medical in field_lower
+                for medical in ["health", "medical", "diagnosis", "medication"]
+            ):
                 categorization["medical"].append({"field": field, "value": str(value)[:50]})
-            elif any(behavioral in field_lower for behavioral in ["history", "preference", "activity", "behavior"]):
+            elif any(
+                behavioral in field_lower
+                for behavioral in ["history", "preference", "activity", "behavior"]
+            ):
                 categorization["behavioral"].append({"field": field, "value": str(value)[:50]})
-            elif any(sensitive in field_lower for sensitive in ["race", "religion", "political", "orientation"]):
-                categorization["sensitive_attributes"].append({"field": field, "value": str(value)[:50]})
+            elif any(
+                sensitive in field_lower
+                for sensitive in ["race", "religion", "political", "orientation"]
+            ):
+                categorization["sensitive_attributes"].append(
+                    {"field": field, "value": str(value)[:50]}
+                )
 
         return categorization
 
-    def _calculate_information_loss(self, original: str, anonymized: str) -> Dict[str, Any]:
+    def _calculate_information_loss(self, original: str, anonymized: str) -> dict[str, Any]:
         """Calculate information loss due to anonymization.
 
         Args:
@@ -693,7 +816,9 @@ class PrivacyTools:
         }
 
     # Placeholder implementations for complex methods
-    async def _assess_data_necessity(self, data_cat: Dict, _purpose: str, _judge_model: str) -> List[Dict[str, Any]]:
+    async def _assess_data_necessity(
+        self, data_cat: dict, _purpose: str, _judge_model: str
+    ) -> list[dict[str, Any]]:
         """Assess if collected data is necessary for stated purpose.
 
         Args:
@@ -717,7 +842,9 @@ class PrivacyTools:
                 )
         return assessments
 
-    async def _analyze_purpose_alignment(self, _data: Dict, _purpose: str, _judge_model: str) -> Dict[str, Any]:
+    async def _analyze_purpose_alignment(
+        self, _data: dict, _purpose: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Analyze alignment between data collection and stated purpose.
 
         Args:
@@ -730,7 +857,9 @@ class PrivacyTools:
         """
         return {"alignment_score": 0.8, "misaligned_fields": []}
 
-    async def _analyze_consent_clarity(self, _consent_text: str, _judge_model: str) -> Dict[str, Any]:
+    async def _analyze_consent_clarity(
+        self, _consent_text: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Analyze consent notice clarity.
 
         Args:
@@ -742,7 +871,9 @@ class PrivacyTools:
         """
         return {"clarity_score": 0.7, "readability_grade": "college"}
 
-    async def _check_standard_compliance(self, _consent: str, _practices: Dict, _standard: str, _judge_model: str) -> Dict[str, Any]:
+    async def _check_standard_compliance(
+        self, _consent: str, _practices: dict, _standard: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Check compliance with specific privacy standard.
 
         Args:
@@ -756,7 +887,7 @@ class PrivacyTools:
         """
         return {"compliance_score": 0.8, "violations": [], "requirements_met": []}
 
-    def _identify_consent_gaps(self, _consent_text: str, _practices: Dict) -> List[Dict[str, Any]]:
+    def _identify_consent_gaps(self, _consent_text: str, _practices: dict) -> list[dict[str, Any]]:
         """Identify gaps between consent and actual practices.
 
         Args:
@@ -768,7 +899,9 @@ class PrivacyTools:
         """
         return []  # Simplified
 
-    async def _assess_reidentification_risk(self, _original: str, _anonymized: str, _judge_model: str) -> Dict[str, Any]:
+    async def _assess_reidentification_risk(
+        self, _original: str, _anonymized: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Assess risk of re-identification.
 
         Args:
@@ -781,7 +914,7 @@ class PrivacyTools:
         """
         return {"risk_score": 0.2, "risk_factors": [], "confidence": 0.8}
 
-    def _detect_quasi_identifiers(self, _data: str) -> List[Dict[str, Any]]:
+    def _detect_quasi_identifiers(self, _data: str) -> list[dict[str, Any]]:
         """Detect quasi-identifiers that could enable re-identification.
 
         Args:
@@ -793,7 +926,7 @@ class PrivacyTools:
         return []  # Simplified
 
     # Recommendation generation methods
-    def _generate_pii_recommendations(self, risk_score: float, detected_pii: List) -> List[str]:
+    def _generate_pii_recommendations(self, risk_score: float, detected_pii: list) -> list[str]:
         """Generate recommendations for PII protection.
 
         Args:
@@ -816,7 +949,9 @@ class PrivacyTools:
 
         return recommendations
 
-    def _generate_minimization_recommendations(self, score: float, excessive_data: List) -> List[str]:
+    def _generate_minimization_recommendations(
+        self, score: float, excessive_data: list
+    ) -> list[str]:
         """Generate recommendations for data minimization.
 
         Args:
@@ -837,7 +972,9 @@ class PrivacyTools:
 
         return recommendations
 
-    def _generate_compliance_recommendations(self, compliance: float, gaps: List, results: Dict) -> List[str]:
+    def _generate_compliance_recommendations(
+        self, compliance: float, gaps: list, results: dict
+    ) -> list[str]:
         """Generate recommendations for compliance improvement.
 
         Args:
@@ -856,13 +993,17 @@ class PrivacyTools:
         if gaps:
             recommendations.append("Address identified consent and practice gaps")
 
-        low_compliance = [standard for standard, data in results.items() if data["compliance_score"] < 0.7]
+        low_compliance = [
+            standard for standard, data in results.items() if data["compliance_score"] < 0.7
+        ]
         if low_compliance:
             recommendations.append(f"Focus on compliance with: {', '.join(low_compliance)}")
 
         return recommendations
 
-    def _generate_anonymization_recommendations(self, effectiveness: float, risk: Dict, loss: Dict) -> List[str]:
+    def _generate_anonymization_recommendations(
+        self, effectiveness: float, risk: dict, loss: dict
+    ) -> list[str]:
         """Generate recommendations for anonymization improvement.
 
         Args:
@@ -886,7 +1027,9 @@ class PrivacyTools:
 
         return recommendations
 
-    def _generate_leakage_recommendations(self, score: float, direct: List, inference: List) -> List[str]:
+    def _generate_leakage_recommendations(
+        self, score: float, direct: list, inference: list
+    ) -> list[str]:
         """Generate recommendations for preventing data leakage.
 
         Args:
@@ -910,7 +1053,9 @@ class PrivacyTools:
 
         return recommendations
 
-    def _generate_clarity_recommendations(self, clarity: float, issues: List, readability: Dict) -> List[str]:
+    def _generate_clarity_recommendations(
+        self, clarity: float, issues: list, readability: dict
+    ) -> list[str]:
         """Generate recommendations for consent clarity.
 
         Args:
@@ -934,7 +1079,9 @@ class PrivacyTools:
 
         return recommendations
 
-    def _generate_privacy_design_recommendations(self, score: float, gaps: List, assessments: Dict) -> List[str]:
+    def _generate_privacy_design_recommendations(
+        self, score: float, gaps: list, assessments: dict
+    ) -> list[str]:
         """Generate recommendations for privacy-by-design improvement.
 
         Args:
@@ -953,13 +1100,17 @@ class PrivacyTools:
         if gaps:
             recommendations.append("Address identified privacy design gaps")
 
-        weak_principles = [principle for principle, data in assessments.items() if data["score"] < 0.6]
+        weak_principles = [
+            principle for principle, data in assessments.items() if data["score"] < 0.6
+        ]
         if weak_principles:
             recommendations.append(f"Improve implementation of: {', '.join(weak_principles)}")
 
         return recommendations
 
-    def _generate_retention_recommendations(self, compliance: float, violations: List, regulatory_compliance: Dict) -> List[str]:
+    def _generate_retention_recommendations(
+        self, compliance: float, violations: list, regulatory_compliance: dict
+    ) -> list[str]:
         """Generate recommendations for data retention compliance.
 
         Args:
@@ -978,14 +1129,20 @@ class PrivacyTools:
         if violations:
             recommendations.append("Address identified retention policy violations")
 
-        low_compliance = [standard for standard, data in regulatory_compliance.items() if data["compliance_score"] < 0.7]
+        low_compliance = [
+            standard
+            for standard, data in regulatory_compliance.items()
+            if data["compliance_score"] < 0.7
+        ]
         if low_compliance:
-            recommendations.append(f"Focus on retention compliance with: {', '.join(low_compliance)}")
+            recommendations.append(
+                f"Focus on retention compliance with: {', '.join(low_compliance)}"
+            )
 
         return recommendations
 
     # Additional placeholder methods for complex operations
-    def _detect_direct_leakage(self, _input_data: str, _output_data: str) -> List[Dict[str, Any]]:
+    def _detect_direct_leakage(self, _input_data: str, _output_data: str) -> list[dict[str, Any]]:
         """Detect direct data leakage.
 
         Args:
@@ -997,7 +1154,9 @@ class PrivacyTools:
         """
         return []
 
-    async def _detect_inference_leakage(self, _input_data: str, _output_data: str, _judge_model: str) -> List[Dict[str, Any]]:
+    async def _detect_inference_leakage(
+        self, _input_data: str, _output_data: str, _judge_model: str
+    ) -> list[dict[str, Any]]:
         """Detect inference-based leakage.
 
         Args:
@@ -1010,7 +1169,9 @@ class PrivacyTools:
         """
         return []
 
-    def _identify_unexpected_data(self, _input_data: str, _output_data: str, _expected_flow: Optional[Dict]) -> List[Dict[str, Any]]:
+    def _identify_unexpected_data(
+        self, _input_data: str, _output_data: str, _expected_flow: dict | None
+    ) -> list[dict[str, Any]]:
         """Identify unexpected data in outputs.
 
         Args:
@@ -1023,7 +1184,9 @@ class PrivacyTools:
         """
         return []
 
-    async def _llm_assess_data_leakage(self, _input_data: str, _output_data: str, _types: List[str], _judge_model: str) -> Dict[str, Any]:
+    async def _llm_assess_data_leakage(
+        self, _input_data: str, _output_data: str, _types: list[str], _judge_model: str
+    ) -> dict[str, Any]:
         """LLM assessment of data leakage.
 
         Args:
@@ -1037,7 +1200,7 @@ class PrivacyTools:
         """
         return {"leakage_detected": False, "confidence": 0.8}
 
-    def _analyze_consent_readability(self, text: str) -> Dict[str, Any]:
+    def _analyze_consent_readability(self, text: str) -> dict[str, Any]:
         """Analyze readability of consent text.
 
         Args:
@@ -1059,10 +1222,14 @@ class PrivacyTools:
             "sentence_count": sentences,
             "avg_words_per_sentence": avg_words_per_sentence,
             "grade_level": grade_level,
-            "accessibility_score": max(0.0, 1.0 - (grade_level - 8) / 8),  # Lower grade = more accessible
+            "accessibility_score": max(
+                0.0, 1.0 - (grade_level - 8) / 8
+            ),  # Lower grade = more accessible
         }
 
-    async def _assess_clarity_dimension(self, _text: str, _dimension: str, _audience: str, _judge_model: str) -> float:
+    async def _assess_clarity_dimension(
+        self, _text: str, _dimension: str, _audience: str, _judge_model: str
+    ) -> float:
         """Assess specific clarity dimension.
 
         Args:
@@ -1076,7 +1243,7 @@ class PrivacyTools:
         """
         return 0.7  # Placeholder
 
-    def _check_required_consent_elements(self, consent_text: str) -> Dict[str, bool]:
+    def _check_required_consent_elements(self, consent_text: str) -> dict[str, bool]:
         """Check for required consent elements.
 
         Args:
@@ -1087,15 +1254,21 @@ class PrivacyTools:
         """
         elements = {
             "purpose_statement": "purpose" in consent_text.lower(),
-            "data_types": any(word in consent_text.lower() for word in ["data", "information", "personal"]),
-            "retention_period": any(word in consent_text.lower() for word in ["retain", "keep", "store", "delete"]),
-            "user_rights": any(word in consent_text.lower() for word in ["right", "access", "delete", "opt-out"]),
+            "data_types": any(
+                word in consent_text.lower() for word in ["data", "information", "personal"]
+            ),
+            "retention_period": any(
+                word in consent_text.lower() for word in ["retain", "keep", "store", "delete"]
+            ),
+            "user_rights": any(
+                word in consent_text.lower() for word in ["right", "access", "delete", "opt-out"]
+            ),
             "contact_info": "@" in consent_text or "contact" in consent_text.lower(),
         }
 
         return elements
 
-    def _identify_clarity_issues(self, text: str, _audience: str) -> List[Dict[str, Any]]:
+    def _identify_clarity_issues(self, text: str, _audience: str) -> list[dict[str, Any]]:
         """Identify clarity issues in consent text.
 
         Args:
@@ -1111,17 +1284,29 @@ class PrivacyTools:
         words = text.split()
         long_words = [word for word in words if len(word) > 12]
         if len(long_words) > len(words) * 0.1:
-            issues.append({"type": "complex_language", "severity": "medium", "description": "Too many complex words for target audience"})
+            issues.append(
+                {
+                    "type": "complex_language",
+                    "severity": "medium",
+                    "description": "Too many complex words for target audience",
+                }
+            )
 
         # Check for very long sentences
         sentences = re.split(r"[.!?]+", text)
         long_sentences = [s for s in sentences if len(s.split()) > 30]
         if len(long_sentences) > len(sentences) * 0.2:
-            issues.append({"type": "long_sentences", "severity": "medium", "description": "Sentences are too long for easy comprehension"})
+            issues.append(
+                {
+                    "type": "long_sentences",
+                    "severity": "medium",
+                    "description": "Sentences are too long for easy comprehension",
+                }
+            )
 
         return issues
 
-    def _compare_policies_practices(self, _policies: Dict, _practices: Dict) -> Dict[str, Any]:
+    def _compare_policies_practices(self, _policies: dict, _practices: dict) -> dict[str, Any]:
         """Compare stated policies with actual practices.
 
         Args:
@@ -1133,7 +1318,9 @@ class PrivacyTools:
         """
         return {"alignment_score": 0.8, "discrepancies": []}
 
-    def _identify_retention_violations(self, _policies: Dict, _practices: Dict) -> List[Dict[str, Any]]:
+    def _identify_retention_violations(
+        self, _policies: dict, _practices: dict
+    ) -> list[dict[str, Any]]:
         """Identify retention policy violations.
 
         Args:
@@ -1145,7 +1332,9 @@ class PrivacyTools:
         """
         return []
 
-    async def _check_retention_compliance(self, _policies: Dict, _practices: Dict, _requirement: str, _judge_model: str) -> Dict[str, Any]:
+    async def _check_retention_compliance(
+        self, _policies: dict, _practices: dict, _requirement: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Check retention compliance with specific requirement.
 
         Args:
@@ -1159,7 +1348,7 @@ class PrivacyTools:
         """
         return {"compliance_score": 0.8, "violations": []}
 
-    def _evaluate_privacy_controls(self, controls: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _evaluate_privacy_controls(self, controls: list[dict[str, Any]]) -> dict[str, Any]:
         """Evaluate effectiveness of privacy controls.
 
         Args:
@@ -1185,7 +1374,9 @@ class PrivacyTools:
             "control_scores": control_scores,
         }
 
-    async def _assess_design_principle(self, _description: str, _controls: List, _principle: str, _judge_model: str) -> Dict[str, Any]:
+    async def _assess_design_principle(
+        self, _description: str, _controls: list, _principle: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Assess implementation of privacy-by-design principle.
 
         Args:
@@ -1199,7 +1390,9 @@ class PrivacyTools:
         """
         return {"score": 0.7, "evidence": [], "gaps": []}
 
-    async def _identify_privacy_gaps(self, _description: str, _controls: List, _judge_model: str) -> List[Dict[str, Any]]:
+    async def _identify_privacy_gaps(
+        self, _description: str, _controls: list, _judge_model: str
+    ) -> list[dict[str, Any]]:
         """Identify privacy implementation gaps.
 
         Args:
@@ -1212,7 +1405,9 @@ class PrivacyTools:
         """
         return []
 
-    async def _evaluate_anonymization_quality(self, _original: str, _anonymized: str, _method: str, _judge_model: str) -> Dict[str, Any]:
+    async def _evaluate_anonymization_quality(
+        self, _original: str, _anonymized: str, _method: str, _judge_model: str
+    ) -> dict[str, Any]:
         """Evaluate quality of anonymization.
 
         Args:

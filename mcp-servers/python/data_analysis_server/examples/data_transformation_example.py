@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Data Transformation Example for MCP Data Analysis Server
 
@@ -134,7 +133,8 @@ async def main():
         if "shape_changes" in summary:
             shape_changes = summary["shape_changes"]
             print(
-                f"   • Shape change: {shape_changes.get('before')} → {shape_changes.get('after')}"
+                f"   • Shape change: {shape_changes.get('before')} → "
+                f"{shape_changes.get('after')}"
             )
     else:
         cleaned_id = dataset_id  # Fallback to original
@@ -284,7 +284,8 @@ async def main():
             ):
                 salary_x_age = desc_stats["numeric_columns"]["salary_x_age"]
                 print(
-                    f"   • Salary*Age interaction - Mean: {salary_x_age.get('mean', 0):.2f}, "
+                    f"   • Salary*Age interaction - "
+                    f"Mean: {salary_x_age.get('mean', 0):.2f}, "
                     f"Std: {salary_x_age.get('std', 0):.2f}"
                 )
 
@@ -337,7 +338,8 @@ async def main():
     if viz_result["success"]:
         viz_info = viz_result["visualization"]
         print(
-            f"✅ Created transformation visualization: {viz_info.get('filename', 'N/A')}"
+            f"✅ Created transformation visualization: "
+            f"{viz_info.get('filename', 'N/A')}"
         )
 
     # Final summary

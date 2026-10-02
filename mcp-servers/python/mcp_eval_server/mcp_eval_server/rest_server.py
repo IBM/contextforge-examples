@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/rest_server.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -18,15 +17,15 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     # Third-Party
+    import uvicorn
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.openapi.utils import get_openapi
     from fastapi.responses import JSONResponse
     from pydantic import BaseModel, Field
-    import uvicorn
 except ImportError:
     print("❌ FastAPI dependencies not installed!")
     print("💡 Install with: pip install fastapi uvicorn")
@@ -61,13 +60,16 @@ from .tools.safety_tools import SafetyTools
 from .tools.workflow_tools import WorkflowTools
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
     title="MCP Evaluation Server REST API",
-    description="Comprehensive AI evaluation platform with 60+ specialized tools across 14 categories",
+    description="Comprehensive AI evaluation platform with 60+ specialized tools across 14 "
+    "categories",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -86,7 +88,7 @@ class ServerInfo(BaseModel):
     version: str = Field(description="Server version")
     description: str = Field(description="Server description")
     total_tools: int = Field(description="Total number of evaluation tools")
-    categories: List[str] = Field(description="Available tool categories")
+    categories: list[str] = Field(description="Available tool categories")
     status: str = Field(description="Server status")
 
 
@@ -97,7 +99,7 @@ class HealthCheck(BaseModel):
     timestamp: float = Field(description="Unix timestamp")
     service: str = Field(description="Service name")
     version: str = Field(description="Service version")
-    checks: Dict[str, bool] = Field(description="Individual health check results")
+    checks: dict[str, bool] = Field(description="Individual health check results")
 
 
 # Judge evaluation models
@@ -113,18 +115,18 @@ class EvaluationCriterion(BaseModel):
 class EvaluationRubric(BaseModel):
     """Evaluation rubric."""
 
-    criteria: List[Dict[str, Any]] = Field(default=[], description="Additional rubric criteria")
-    scale_description: Dict[str, str] = Field(description="Scale value descriptions")
+    criteria: list[dict[str, Any]] = Field(default=[], description="Additional rubric criteria")
+    scale_description: dict[str, str] = Field(description="Scale value descriptions")
 
 
 class JudgeEvaluateRequest(BaseModel):
     """Request for judge evaluation."""
 
     response: str = Field(description="Text response to evaluate")
-    criteria: List[EvaluationCriterion] = Field(description="Evaluation criteria")
+    criteria: list[EvaluationCriterion] = Field(description="Evaluation criteria")
     rubric: EvaluationRubric = Field(description="Scoring rubric")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
-    context: Optional[str] = Field(None, description="Optional context")
+    context: str | None = Field(None, description="Optional context")
     use_cot: bool = Field(True, description="Use chain-of-thought reasoning")
 
 
@@ -133,19 +135,19 @@ class JudgeCompareRequest(BaseModel):
 
     response_a: str = Field(description="First response")
     response_b: str = Field(description="Second response")
-    criteria: List[EvaluationCriterion] = Field(description="Comparison criteria")
+    criteria: list[EvaluationCriterion] = Field(description="Comparison criteria")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
-    context: Optional[str] = Field(None, description="Optional context")
+    context: str | None = Field(None, description="Optional context")
     position_bias_mitigation: bool = Field(True, description="Enable position bias mitigation")
 
 
 class JudgeRankRequest(BaseModel):
     """Request for judge ranking."""
 
-    responses: List[str] = Field(description="List of responses to rank")
-    criteria: List[EvaluationCriterion] = Field(description="Ranking criteria")
+    responses: list[str] = Field(description="List of responses to rank")
+    criteria: list[EvaluationCriterion] = Field(description="Ranking criteria")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
-    context: Optional[str] = Field(None, description="Optional context")
+    context: str | None = Field(None, description="Optional context")
     ranking_method: str = Field(default="tournament", description="Ranking method")
 
 
@@ -164,7 +166,7 @@ class QualityFactualityRequest(BaseModel):
     """Request for factuality evaluation."""
 
     response: str = Field(description="Text to verify")
-    knowledge_base: Optional[Dict[str, Any]] = Field(None, description="Reference sources")
+    knowledge_base: dict[str, Any] | None = Field(None, description="Reference sources")
     fact_checking_model: str = Field(default="gpt-4", description="Model for fact checking")
     confidence_threshold: float = Field(default=0.8, description="Minimum certainty")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
@@ -174,8 +176,10 @@ class QualityCoherenceRequest(BaseModel):
     """Request for coherence evaluation."""
 
     text: str = Field(description="Response to analyze")
-    context: Optional[str] = Field(None, description="Conversation history")
-    coherence_dimensions: List[str] = Field(default=["logical_flow", "consistency", "topic_transitions"], description="What to check")
+    context: str | None = Field(None, description="Conversation history")
+    coherence_dimensions: list[str] = Field(
+        default=["logical_flow", "consistency", "topic_transitions"], description="What to check"
+    )
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
@@ -183,7 +187,10 @@ class QualityToxicityRequest(BaseModel):
     """Request for toxicity assessment."""
 
     content: str = Field(description="Text to analyze")
-    toxicity_categories: List[str] = Field(default=["profanity", "hate_speech", "threats", "discrimination"], description="Types to check")
+    toxicity_categories: list[str] = Field(
+        default=["profanity", "hate_speech", "threats", "discrimination"],
+        description="Types to check",
+    )
     sensitivity_level: str = Field(default="moderate", description="Detection threshold")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
@@ -194,7 +201,7 @@ class PromptClarityRequest(BaseModel):
 
     prompt_text: str = Field(description="The prompt to evaluate")
     target_model: str = Field(default="general", description="Model the prompt is designed for")
-    domain_context: Optional[str] = Field(None, description="Optional domain-specific requirements")
+    domain_context: str | None = Field(None, description="Optional domain-specific requirements")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
@@ -202,9 +209,11 @@ class PromptConsistencyRequest(BaseModel):
     """Request for prompt consistency testing."""
 
     prompt: str = Field(description="Prompt template")
-    test_inputs: List[str] = Field(description="List of input variations")
+    test_inputs: list[str] = Field(description="List of input variations")
     num_runs: int = Field(default=3, description="Repetitions per input")
-    temperature_range: List[float] = Field(default=[0.1, 0.5, 0.9], description="Test different temperatures")
+    temperature_range: list[float] = Field(
+        default=[0.1, 0.5, 0.9], description="Test different temperatures"
+    )
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
@@ -212,8 +221,8 @@ class PromptCompletenessRequest(BaseModel):
     """Request for prompt completeness measurement."""
 
     prompt: str = Field(description="The prompt text")
-    expected_components: List[str] = Field(description="List of required elements")
-    test_samples: Optional[List[str]] = Field(None, description="Sample outputs to analyze")
+    expected_components: list[str] = Field(description="List of required elements")
+    test_samples: list[str] | None = Field(None, description="Sample outputs to analyze")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
@@ -221,8 +230,10 @@ class PromptRelevanceRequest(BaseModel):
     """Request for prompt relevance assessment."""
 
     prompt: str = Field(description="Input prompt")
-    outputs: List[str] = Field(description="Generated responses")
-    embedding_model: str = Field(default="all-MiniLM-L6-v2", description="Model for semantic similarity")
+    outputs: list[str] = Field(description="Generated responses")
+    embedding_model: str = Field(
+        default="all-MiniLM-L6-v2", description="Model for semantic similarity"
+    )
     relevance_threshold: float = Field(default=0.7, description="Minimum acceptable score")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
@@ -231,8 +242,8 @@ class PromptRelevanceRequest(BaseModel):
 class AgentToolUseRequest(BaseModel):
     """Request for agent tool usage evaluation."""
 
-    agent_trace: Dict[str, Any] = Field(description="Complete execution trace with tool calls")
-    expected_tools: List[str] = Field(description="Tools that should be used")
+    agent_trace: dict[str, Any] = Field(description="Complete execution trace with tool calls")
+    expected_tools: list[str] = Field(description="Tools that should be used")
     tool_sequence_matters: bool = Field(default=False, description="Whether order is important")
     allow_extra_tools: bool = Field(default=True, description="Permit additional tool calls")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
@@ -242,19 +253,19 @@ class AgentTaskCompletionRequest(BaseModel):
     """Request for agent task completion evaluation."""
 
     task_description: str = Field(description="What the agent should accomplish")
-    success_criteria: List[Dict[str, Any]] = Field(description="Measurable outcomes")
-    agent_trace: Dict[str, Any] = Field(description="Execution history")
-    final_state: Optional[Dict[str, Any]] = Field(None, description="System state after execution")
+    success_criteria: list[dict[str, Any]] = Field(description="Measurable outcomes")
+    agent_trace: dict[str, Any] = Field(description="Execution history")
+    final_state: dict[str, Any] | None = Field(None, description="System state after execution")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
 class AgentReasoningRequest(BaseModel):
     """Request for agent reasoning analysis."""
 
-    reasoning_trace: List[Dict[str, Any]] = Field(description="Agent's thought process")
-    decision_points: List[Dict[str, Any]] = Field(description="Key choices made")
-    context: Dict[str, Any] = Field(description="Available information")
-    optimal_path: Optional[List[str]] = Field(None, description="Best possible approach")
+    reasoning_trace: list[dict[str, Any]] = Field(description="Agent's thought process")
+    decision_points: list[dict[str, Any]] = Field(description="Key choices made")
+    context: dict[str, Any] = Field(description="Available information")
+    optimal_path: list[str] | None = Field(None, description="Best possible approach")
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model to use")
 
 
@@ -262,9 +273,11 @@ class AgentBenchmarkRequest(BaseModel):
     """Request for agent benchmarking."""
 
     benchmark_suite: str = Field(description="Which tests to run")
-    agent_config: Dict[str, Any] = Field(description="Agent setup")
-    baseline_comparison: Optional[Dict[str, Any]] = Field(None, description="Compare to other agents")
-    metrics_focus: List[str] = Field(default=["accuracy", "efficiency", "reliability"], description="Priority metrics")
+    agent_config: dict[str, Any] = Field(description="Agent setup")
+    baseline_comparison: dict[str, Any] | None = Field(None, description="Compare to other agents")
+    metrics_focus: list[str] = Field(
+        default=["accuracy", "efficiency", "reliability"], description="Priority metrics"
+    )
 
 
 # RAG evaluation models
@@ -272,11 +285,19 @@ class RAGRetrievalRelevanceRequest(BaseModel):
     """Request for RAG retrieval relevance evaluation."""
 
     query: str = Field(description="Original user query")
-    retrieved_documents: List[Dict[str, Any]] = Field(description="List of retrieved docs with 'content' and optional 'score'")
+    retrieved_documents: list[dict[str, Any]] = Field(
+        description="List of retrieved docs with 'content' and optional 'score'"
+    )
     relevance_threshold: float = Field(default=0.7, description="Minimum relevance score")
-    embedding_model: str = Field(default="text-embedding-ada-002", description="Model for semantic similarity")
-    judge_model: str = Field(default="gpt-4o-mini", description="LLM judge for relevance assessment")
-    use_llm_judge: bool = Field(default=True, description="Whether to use LLM judge in addition to embeddings")
+    embedding_model: str = Field(
+        default="text-embedding-ada-002", description="Model for semantic similarity"
+    )
+    judge_model: str = Field(
+        default="gpt-4o-mini", description="LLM judge for relevance assessment"
+    )
+    use_llm_judge: bool = Field(
+        default=True, description="Whether to use LLM judge in addition to embeddings"
+    )
 
 
 class RAGContextUtilizationRequest(BaseModel):
@@ -285,7 +306,9 @@ class RAGContextUtilizationRequest(BaseModel):
     query: str = Field(description="Original query")
     retrieved_context: str = Field(description="Full retrieved context")
     generated_answer: str = Field(description="Model's generated response")
-    context_chunks: Optional[List[str]] = Field(None, description="Optional list of individual context chunks")
+    context_chunks: list[str] | None = Field(
+        None, description="Optional list of individual context chunks"
+    )
     judge_model: str = Field(default="gpt-4o-mini", description="Judge model for evaluation")
 
 
@@ -304,8 +327,12 @@ class RAGHallucinationDetectionRequest(BaseModel):
 
     generated_text: str = Field(description="Text to analyze for hallucinations")
     source_context: str = Field(description="Source context to check against")
-    judge_model: str = Field(default="gpt-4o-mini", description="Judge model for hallucination detection")
-    detection_threshold: float = Field(default=0.8, description="Confidence threshold for hallucination detection")
+    judge_model: str = Field(
+        default="gpt-4o-mini", description="Judge model for hallucination detection"
+    )
+    detection_threshold: float = Field(
+        default=0.8, description="Confidence threshold for hallucination detection"
+    )
 
 
 # Initialize tools on startup
@@ -338,13 +365,19 @@ async def startup_event():
             "multilingual": MultilingualTools(judge_tools),
             "performance": PerformanceTools(judge_tools),
             "privacy": PrivacyTools(judge_tools),
-            "workflow": WorkflowTools(judge_tools, None, None, None),  # Initialize with minimal deps
+            "workflow": WorkflowTools(
+                judge_tools, None, None, None
+            ),  # Initialize with minimal deps
             "calibration": CalibrationTools(judge_tools),
         }
     )
 
     # Initialize caching and storage
-    tools["cache"] = {"evaluation": EvaluationCache(), "judge": JudgeResponseCache(), "benchmark": BenchmarkCache()}
+    tools["cache"] = {
+        "evaluation": EvaluationCache(),
+        "judge": JudgeResponseCache(),
+        "benchmark": BenchmarkCache(),
+    }
     tools["storage"] = ResultsStore()
 
     # Log available judges
@@ -362,10 +395,29 @@ async def get_server_info():
     Returns:
         ServerInfo: Server information including name, version, and available categories.
     """
-    categories = ["judge", "prompt", "agent", "quality", "rag", "bias", "robustness", "safety", "multilingual", "performance", "privacy", "workflow", "calibration"]
+    categories = [
+        "judge",
+        "prompt",
+        "agent",
+        "quality",
+        "rag",
+        "bias",
+        "robustness",
+        "safety",
+        "multilingual",
+        "performance",
+        "privacy",
+        "workflow",
+        "calibration",
+    ]
 
     return ServerInfo(
-        name="MCP Evaluation Server REST API", version="0.1.0", description="Comprehensive AI evaluation platform with 60+ specialized tools", total_tools=63, categories=categories, status="healthy"
+        name="MCP Evaluation Server REST API",
+        version="0.1.0",
+        description="Comprehensive AI evaluation platform with 60+ specialized tools",
+        total_tools=63,
+        categories=categories,
+        status="healthy",
     )
 
 
@@ -383,7 +435,14 @@ async def health_check():
         timestamp=time.time(),
         service="mcp-eval-server",
         version="0.1.0",
-        checks={"server_running": True, "tools_loaded": len(tools) > 0, "judges_available": len(tools.get("judge", {}).get_available_judges() if tools.get("judge") else []) > 0},
+        checks={
+            "server_running": True,
+            "tools_loaded": len(tools) > 0,
+            "judges_available": len(
+                tools.get("judge", {}).get_available_judges() if tools.get("judge") else []
+            )
+            > 0,
+        },
     )
 
 
@@ -397,39 +456,131 @@ async def get_tool_categories():
     """
     return {
         "categories": [
-            {"name": "judge", "description": "LLM-as-a-judge evaluation tools", "tools": 4, "endpoints": ["/judge/evaluate", "/judge/compare", "/judge/rank", "/judge/reference"]},
-            {"name": "prompt", "description": "Prompt quality evaluation tools", "tools": 4, "endpoints": ["/prompt/clarity", "/prompt/consistency", "/prompt/completeness", "/prompt/relevance"]},
-            {"name": "agent", "description": "Agent performance evaluation tools", "tools": 4, "endpoints": ["/agent/tool-use", "/agent/task-completion", "/agent/reasoning", "/agent/benchmark"]},
-            {"name": "quality", "description": "Content quality assessment tools", "tools": 3, "endpoints": ["/quality/factuality", "/quality/coherence", "/quality/toxicity"]},
+            {
+                "name": "judge",
+                "description": "LLM-as-a-judge evaluation tools",
+                "tools": 4,
+                "endpoints": [
+                    "/judge/evaluate",
+                    "/judge/compare",
+                    "/judge/rank",
+                    "/judge/reference",
+                ],
+            },
+            {
+                "name": "prompt",
+                "description": "Prompt quality evaluation tools",
+                "tools": 4,
+                "endpoints": [
+                    "/prompt/clarity",
+                    "/prompt/consistency",
+                    "/prompt/completeness",
+                    "/prompt/relevance",
+                ],
+            },
+            {
+                "name": "agent",
+                "description": "Agent performance evaluation tools",
+                "tools": 4,
+                "endpoints": [
+                    "/agent/tool-use",
+                    "/agent/task-completion",
+                    "/agent/reasoning",
+                    "/agent/benchmark",
+                ],
+            },
+            {
+                "name": "quality",
+                "description": "Content quality assessment tools",
+                "tools": 3,
+                "endpoints": ["/quality/factuality", "/quality/coherence", "/quality/toxicity"],
+            },
             {
                 "name": "rag",
                 "description": "RAG system evaluation tools",
                 "tools": 8,
-                "endpoints": ["/rag/retrieval-relevance", "/rag/context-utilization", "/rag/answer-groundedness", "/rag/hallucination-detection"],
+                "endpoints": [
+                    "/rag/retrieval-relevance",
+                    "/rag/context-utilization",
+                    "/rag/answer-groundedness",
+                    "/rag/hallucination-detection",
+                ],
             },
-            {"name": "bias", "description": "Bias and fairness assessment tools", "tools": 6, "endpoints": ["/bias/demographic", "/bias/representation-fairness", "/bias/cultural-sensitivity"]},
+            {
+                "name": "bias",
+                "description": "Bias and fairness assessment tools",
+                "tools": 6,
+                "endpoints": [
+                    "/bias/demographic",
+                    "/bias/representation-fairness",
+                    "/bias/cultural-sensitivity",
+                ],
+            },
             {
                 "name": "robustness",
                 "description": "Robustness and security testing tools",
                 "tools": 5,
-                "endpoints": ["/robustness/adversarial", "/robustness/input-sensitivity", "/robustness/prompt-injection"],
+                "endpoints": [
+                    "/robustness/adversarial",
+                    "/robustness/input-sensitivity",
+                    "/robustness/prompt-injection",
+                ],
             },
             {
                 "name": "safety",
                 "description": "Safety and alignment assessment tools",
                 "tools": 4,
-                "endpoints": ["/safety/harmful-content", "/safety/instruction-following", "/safety/value-alignment"],
+                "endpoints": [
+                    "/safety/harmful-content",
+                    "/safety/instruction-following",
+                    "/safety/value-alignment",
+                ],
             },
-            {"name": "multilingual", "description": "Multilingual evaluation tools", "tools": 4, "endpoints": ["/multilingual/translation-quality", "/multilingual/cross-lingual-consistency"]},
+            {
+                "name": "multilingual",
+                "description": "Multilingual evaluation tools",
+                "tools": 4,
+                "endpoints": [
+                    "/multilingual/translation-quality",
+                    "/multilingual/cross-lingual-consistency",
+                ],
+            },
             {
                 "name": "performance",
                 "description": "Performance monitoring tools",
                 "tools": 4,
-                "endpoints": ["/performance/latency", "/performance/computational-efficiency", "/performance/throughput-scaling"],
+                "endpoints": [
+                    "/performance/latency",
+                    "/performance/computational-efficiency",
+                    "/performance/throughput-scaling",
+                ],
             },
-            {"name": "privacy", "description": "Privacy and data protection tools", "tools": 8, "endpoints": ["/privacy/pii-detection", "/privacy/data-minimization", "/privacy/consent-compliance"]},
-            {"name": "workflow", "description": "Workflow management tools", "tools": 3, "endpoints": ["/workflow/create-suite", "/workflow/run-evaluation", "/workflow/compare-evaluations"]},
-            {"name": "calibration", "description": "Judge calibration tools", "tools": 2, "endpoints": ["/calibration/judge-agreement", "/calibration/optimize-rubrics"]},
+            {
+                "name": "privacy",
+                "description": "Privacy and data protection tools",
+                "tools": 8,
+                "endpoints": [
+                    "/privacy/pii-detection",
+                    "/privacy/data-minimization",
+                    "/privacy/consent-compliance",
+                ],
+            },
+            {
+                "name": "workflow",
+                "description": "Workflow management tools",
+                "tools": 3,
+                "endpoints": [
+                    "/workflow/create-suite",
+                    "/workflow/run-evaluation",
+                    "/workflow/compare-evaluations",
+                ],
+            },
+            {
+                "name": "calibration",
+                "description": "Judge calibration tools",
+                "tools": 2,
+                "endpoints": ["/calibration/judge-agreement", "/calibration/optimize-rubrics"],
+            },
         ]
     }
 
@@ -439,47 +590,85 @@ async def get_all_tools():
     """Get detailed information about all available tools grouped by category.
 
     Returns:
-        Dict: Dictionary with tools organized by category including names, descriptions, and endpoints.
+        Dict: Dictionary with tools organized by category including names, descriptions, and
+        endpoints.
     """
     return {
         "judge": {
             "evaluate": {
                 "name": "judge.evaluate_response",
-                "description": "Evaluate a single response using LLM-as-a-judge with customizable criteria and rubrics",
+                "description": "Evaluate a single response using LLM-as-a-judge with customizable "
+                "criteria and rubrics",
                 "method": "POST",
                 "endpoint": "/judge/evaluate",
             },
-            "compare": {"name": "judge.pairwise_comparison", "description": "Compare two responses and determine which is better using LLM-as-a-judge", "method": "POST", "endpoint": "/judge/compare"},
-            "rank": {"name": "judge.rank_responses", "description": "Rank multiple responses from best to worst using LLM-as-a-judge", "method": "POST", "endpoint": "/judge/rank"},
+            "compare": {
+                "name": "judge.pairwise_comparison",
+                "description": "Compare two responses and determine which is better using "
+                "LLM-as-a-judge",
+                "method": "POST",
+                "endpoint": "/judge/compare",
+            },
+            "rank": {
+                "name": "judge.rank_responses",
+                "description": "Rank multiple responses from best to worst using LLM-as-a-judge",
+                "method": "POST",
+                "endpoint": "/judge/rank",
+            },
             "reference": {
                 "name": "judge.evaluate_with_reference",
-                "description": "Evaluate response against a gold standard reference using LLM-as-a-judge",
+                "description": "Evaluate response against a gold standard reference using "
+                "LLM-as-a-judge",
                 "method": "POST",
                 "endpoint": "/judge/reference",
             },
         },
         "quality": {
-            "factuality": {"name": "quality.evaluate_factuality", "description": "Check factual accuracy of responses against knowledge bases", "method": "POST", "endpoint": "/quality/factuality"},
-            "coherence": {"name": "quality.measure_coherence", "description": "Analyze logical flow and consistency of text", "method": "POST", "endpoint": "/quality/coherence"},
-            "toxicity": {"name": "quality.assess_toxicity", "description": "Detect harmful or biased content", "method": "POST", "endpoint": "/quality/toxicity"},
+            "factuality": {
+                "name": "quality.evaluate_factuality",
+                "description": "Check factual accuracy of responses against knowledge bases",
+                "method": "POST",
+                "endpoint": "/quality/factuality",
+            },
+            "coherence": {
+                "name": "quality.measure_coherence",
+                "description": "Analyze logical flow and consistency of text",
+                "method": "POST",
+                "endpoint": "/quality/coherence",
+            },
+            "toxicity": {
+                "name": "quality.assess_toxicity",
+                "description": "Detect harmful or biased content",
+                "method": "POST",
+                "endpoint": "/quality/toxicity",
+            },
         },
         "prompt": {
-            "clarity": {"name": "prompt.evaluate_clarity", "description": "Assess prompt clarity using multiple rule-based and LLM-based metrics", "method": "POST", "endpoint": "/prompt/clarity"},
+            "clarity": {
+                "name": "prompt.evaluate_clarity",
+                "description": "Assess prompt clarity using multiple rule-based and LLM-based "
+                "metrics",
+                "method": "POST",
+                "endpoint": "/prompt/clarity",
+            },
             "consistency": {
                 "name": "prompt.test_consistency",
-                "description": "Test prompt consistency across multiple runs and temperature settings",
+                "description": "Test prompt consistency across multiple runs and temperature "
+                "settings",
                 "method": "POST",
                 "endpoint": "/prompt/consistency",
             },
             "completeness": {
                 "name": "prompt.measure_completeness",
-                "description": "Evaluate if prompt generates complete responses covering expected components",
+                "description": "Evaluate if prompt generates complete responses covering expected "
+                "components",
                 "method": "POST",
                 "endpoint": "/prompt/completeness",
             },
             "relevance": {
                 "name": "prompt.assess_relevance",
-                "description": "Measure semantic alignment between prompt and outputs using embeddings",
+                "description": "Measure semantic alignment between prompt and outputs using "
+                "embeddings",
                 "method": "POST",
                 "endpoint": "/prompt/relevance",
             },
@@ -507,11 +696,18 @@ async def judge_evaluate(request: JudgeEvaluateRequest):
         criteria = [criterion.dict() for criterion in request.criteria]
         rubric = request.rubric.dict()
 
-        result = await tools["judge"].evaluate_response(response=request.response, criteria=criteria, rubric=rubric, judge_model=request.judge_model, context=request.context, use_cot=request.use_cot)
+        result = await tools["judge"].evaluate_response(
+            response=request.response,
+            criteria=criteria,
+            rubric=rubric,
+            judge_model=request.judge_model,
+            context=request.context,
+            use_cot=request.use_cot,
+        )
         return result
     except Exception as e:
         logger.error(f"Error in judge evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/judge/compare", tags=["judge"])
@@ -541,7 +737,7 @@ async def judge_compare(request: JudgeCompareRequest):
         return result
     except Exception as e:
         logger.error(f"Error in judge comparison: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/judge/rank", tags=["judge"])
@@ -560,11 +756,17 @@ async def judge_rank(request: JudgeRankRequest):
     try:
         criteria = [criterion.dict() for criterion in request.criteria]
 
-        result = await tools["judge"].rank_responses(responses=request.responses, criteria=criteria, judge_model=request.judge_model, context=request.context, ranking_method=request.ranking_method)
+        result = await tools["judge"].rank_responses(
+            responses=request.responses,
+            criteria=criteria,
+            judge_model=request.judge_model,
+            context=request.context,
+            ranking_method=request.ranking_method,
+        )
         return result
     except Exception as e:
         logger.error(f"Error in judge ranking: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/judge/reference", tags=["judge"])
@@ -582,12 +784,16 @@ async def judge_reference(request: JudgeReferenceRequest):
     """
     try:
         result = await tools["judge"].evaluate_with_reference(
-            response=request.response, reference=request.reference, judge_model=request.judge_model, evaluation_type=request.evaluation_type, tolerance=request.tolerance
+            response=request.response,
+            reference=request.reference,
+            judge_model=request.judge_model,
+            evaluation_type=request.evaluation_type,
+            tolerance=request.tolerance,
         )
         return result
     except Exception as e:
         logger.error(f"Error in reference evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Quality assessment endpoints
@@ -615,7 +821,7 @@ async def quality_factuality(request: QualityFactualityRequest):
         return result
     except Exception as e:
         logger.error(f"Error in factuality check: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/quality/coherence", tags=["quality"])
@@ -632,11 +838,16 @@ async def quality_coherence(request: QualityCoherenceRequest):
         HTTPException: If coherence analysis fails or invalid parameters provided.
     """
     try:
-        result = await tools["quality"].measure_coherence(text=request.text, context=request.context, coherence_dimensions=request.coherence_dimensions, judge_model=request.judge_model)
+        result = await tools["quality"].measure_coherence(
+            text=request.text,
+            context=request.context,
+            coherence_dimensions=request.coherence_dimensions,
+            judge_model=request.judge_model,
+        )
         return result
     except Exception as e:
         logger.error(f"Error in coherence analysis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/quality/toxicity", tags=["quality"])
@@ -654,12 +865,15 @@ async def quality_toxicity(request: QualityToxicityRequest):
     """
     try:
         result = await tools["quality"].assess_toxicity(
-            content=request.content, toxicity_categories=request.toxicity_categories, sensitivity_level=request.sensitivity_level, judge_model=request.judge_model
+            content=request.content,
+            toxicity_categories=request.toxicity_categories,
+            sensitivity_level=request.sensitivity_level,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in toxicity assessment: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Prompt evaluation endpoints
@@ -677,11 +891,16 @@ async def prompt_clarity(request: PromptClarityRequest):
         HTTPException: If clarity evaluation fails or invalid parameters provided.
     """
     try:
-        result = await tools["prompt"].evaluate_clarity(prompt_text=request.prompt_text, target_model=request.target_model, domain_context=request.domain_context, judge_model=request.judge_model)
+        result = await tools["prompt"].evaluate_clarity(
+            prompt_text=request.prompt_text,
+            target_model=request.target_model,
+            domain_context=request.domain_context,
+            judge_model=request.judge_model,
+        )
         return result
     except Exception as e:
         logger.error(f"Error in prompt clarity evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/prompt/consistency", tags=["prompt"])
@@ -699,12 +918,16 @@ async def prompt_consistency(request: PromptConsistencyRequest):
     """
     try:
         result = await tools["prompt"].test_consistency(
-            prompt=request.prompt, test_inputs=request.test_inputs, num_runs=request.num_runs, temperature_range=request.temperature_range, judge_model=request.judge_model
+            prompt=request.prompt,
+            test_inputs=request.test_inputs,
+            num_runs=request.num_runs,
+            temperature_range=request.temperature_range,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in prompt consistency testing: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/prompt/completeness", tags=["prompt"])
@@ -721,11 +944,16 @@ async def prompt_completeness(request: PromptCompletenessRequest):
         HTTPException: If completeness measurement fails or invalid parameters provided.
     """
     try:
-        result = await tools["prompt"].measure_completeness(prompt=request.prompt, expected_components=request.expected_components, test_samples=request.test_samples, judge_model=request.judge_model)
+        result = await tools["prompt"].measure_completeness(
+            prompt=request.prompt,
+            expected_components=request.expected_components,
+            test_samples=request.test_samples,
+            judge_model=request.judge_model,
+        )
         return result
     except Exception as e:
         logger.error(f"Error in prompt completeness measurement: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/prompt/relevance", tags=["prompt"])
@@ -743,12 +971,16 @@ async def prompt_relevance(request: PromptRelevanceRequest):
     """
     try:
         result = await tools["prompt"].assess_relevance(
-            prompt=request.prompt, outputs=request.outputs, embedding_model=request.embedding_model, relevance_threshold=request.relevance_threshold, judge_model=request.judge_model
+            prompt=request.prompt,
+            outputs=request.outputs,
+            embedding_model=request.embedding_model,
+            relevance_threshold=request.relevance_threshold,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in prompt relevance assessment: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Agent evaluation endpoints
@@ -776,7 +1008,7 @@ async def agent_tool_use(request: AgentToolUseRequest):
         return result
     except Exception as e:
         logger.error(f"Error in agent tool use evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/agent/task-completion", tags=["agent"])
@@ -794,12 +1026,16 @@ async def agent_task_completion(request: AgentTaskCompletionRequest):
     """
     try:
         result = await tools["agent"].measure_task_completion(
-            task_description=request.task_description, success_criteria=request.success_criteria, agent_trace=request.agent_trace, final_state=request.final_state, judge_model=request.judge_model
+            task_description=request.task_description,
+            success_criteria=request.success_criteria,
+            agent_trace=request.agent_trace,
+            final_state=request.final_state,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in agent task completion evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/agent/reasoning", tags=["agent"])
@@ -817,12 +1053,16 @@ async def agent_reasoning(request: AgentReasoningRequest):
     """
     try:
         result = await tools["agent"].analyze_reasoning(
-            reasoning_trace=request.reasoning_trace, decision_points=request.decision_points, context=request.context, optimal_path=request.optimal_path, judge_model=request.judge_model
+            reasoning_trace=request.reasoning_trace,
+            decision_points=request.decision_points,
+            context=request.context,
+            optimal_path=request.optimal_path,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in agent reasoning analysis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/agent/benchmark", tags=["agent"])
@@ -840,12 +1080,15 @@ async def agent_benchmark(request: AgentBenchmarkRequest):
     """
     try:
         result = await tools["agent"].benchmark_performance(
-            benchmark_suite=request.benchmark_suite, agent_config=request.agent_config, baseline_comparison=request.baseline_comparison, metrics_focus=request.metrics_focus
+            benchmark_suite=request.benchmark_suite,
+            agent_config=request.agent_config,
+            baseline_comparison=request.baseline_comparison,
+            metrics_focus=request.metrics_focus,
         )
         return result
     except Exception as e:
         logger.error(f"Error in agent benchmarking: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # RAG evaluation endpoints
@@ -874,7 +1117,7 @@ async def rag_retrieval_relevance(request: RAGRetrievalRelevanceRequest):
         return result
     except Exception as e:
         logger.error(f"Error in RAG retrieval relevance evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/context-utilization", tags=["rag"])
@@ -892,12 +1135,16 @@ async def rag_context_utilization(request: RAGContextUtilizationRequest):
     """
     try:
         result = await tools["rag"].measure_context_utilization(
-            query=request.query, retrieved_context=request.retrieved_context, generated_answer=request.generated_answer, context_chunks=request.context_chunks, judge_model=request.judge_model
+            query=request.query,
+            retrieved_context=request.retrieved_context,
+            generated_answer=request.generated_answer,
+            context_chunks=request.context_chunks,
+            judge_model=request.judge_model,
         )
         return result
     except Exception as e:
         logger.error(f"Error in RAG context utilization evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/answer-groundedness", tags=["rag"])
@@ -915,12 +1162,16 @@ async def rag_answer_groundedness(request: RAGAnswerGroundednessRequest):
     """
     try:
         result = await tools["rag"].assess_answer_groundedness(
-            question=request.question, answer=request.answer, supporting_context=request.supporting_context, judge_model=request.judge_model, strictness=request.strictness
+            question=request.question,
+            answer=request.answer,
+            supporting_context=request.supporting_context,
+            judge_model=request.judge_model,
+            strictness=request.strictness,
         )
         return result
     except Exception as e:
         logger.error(f"Error in RAG answer groundedness evaluation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/hallucination-detection", tags=["rag"])
@@ -938,12 +1189,15 @@ async def rag_hallucination_detection(request: RAGHallucinationDetectionRequest)
     """
     try:
         result = await tools["rag"].detect_hallucination_vs_context(
-            generated_text=request.generated_text, source_context=request.source_context, judge_model=request.judge_model, detection_threshold=request.detection_threshold
+            generated_text=request.generated_text,
+            source_context=request.source_context,
+            judge_model=request.judge_model,
+            detection_threshold=request.detection_threshold,
         )
         return result
     except Exception as e:
         logger.error(f"Error in RAG hallucination detection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Custom OpenAPI schema generation
@@ -963,7 +1217,8 @@ def custom_openapi():
 # MCP Evaluation Server REST API
 
 ## Overview
-Comprehensive AI evaluation platform providing 60+ specialized evaluation tools across 14 categories.
+Comprehensive AI evaluation platform providing 60+ specialized evaluation tools across 14
+categories.
 
 ## Features
 - **LLM-as-a-Judge**: Advanced evaluation using GPT-4, Azure OpenAI, and other models
@@ -1033,7 +1288,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         JSONResponse: Formatted error response with details.
     """
     logger.error(f"Global exception on {request.url}: {exc}")
-    return JSONResponse(status_code=500, content={"error": "Internal server error", "detail": str(exc), "type": type(exc).__name__})
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc), "type": type(exc).__name__},
+    )
 
 
 def main():
@@ -1052,7 +1310,13 @@ def main():
     print(f"🔍 Health Check: http://{args.host}:{args.port}/health")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    uvicorn.run("mcp_eval_server.rest_server:app", host=args.host, port=args.port, reload=args.reload, log_level=args.log_level)
+    uvicorn.run(
+        "mcp_eval_server.rest_server:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        log_level=args.log_level,
+    )
 
 
 if __name__ == "__main__":

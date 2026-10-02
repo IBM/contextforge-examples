@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Data transformation and cleaning functionality.
 """
@@ -22,10 +21,10 @@ logger = logging.getLogger(__name__)
 class DataTransformer:
     """Provides data transformation and cleaning capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the data transformer."""
-        self.scalers = {}
-        self.encoders = {}
+        self.scalers: dict[str, Any] = {}
+        self.encoders: dict[str, Any] = {}
 
     def transform_data(
         self, df: pd.DataFrame, operations: list[dict[str, Any]], inplace: bool = False
@@ -65,7 +64,8 @@ class DataTransformer:
                 )
 
                 logger.info(
-                    f"Applied {operation_type} operation: {operation_result.get('message', 'Success')}"
+                    f"Applied {operation_type} operation:"
+                    f" {operation_result.get('message', 'Success')}"
                 )
 
             except Exception as e:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Sales Analysis Example
 
@@ -195,7 +194,11 @@ async def main():
         "query_data",
         {
             "dataset_id": dataset_id,
-            "query": "SELECT product_category, AVG(revenue) as avg_revenue, COUNT(*) as count FROM table GROUP BY product_category ORDER BY avg_revenue DESC",
+            "query": (
+                "SELECT product_category, AVG(revenue) as avg_revenue,"
+                " COUNT(*) as count FROM table"
+                " GROUP BY product_category ORDER BY avg_revenue DESC"
+            ),
             "limit": 10,
             "return_format": "json",
         },

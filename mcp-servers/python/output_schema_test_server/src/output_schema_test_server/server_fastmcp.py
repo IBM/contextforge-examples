@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Location: ./mcp-servers/python/output_schema_test_server/src/output_schema_test_server/server_fastmcp.py
+"""Location: ./mcp-servers/python/output_schema_test_server/server_fastmcp.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
 
@@ -81,11 +80,15 @@ async def multiply_numbers(
 ) -> CalculationResult:
     """Multiply two numbers and return a structured result."""
     logger.info(f"Multiplying {a} * {b}")
-    return CalculationResult(result=a * b, operation="multiplication", operands=[a, b], success=True)
+    return CalculationResult(
+        result=a * b, operation="multiplication", operands=[a, b], success=True
+    )
 
 
 @mcp.tool(description="Divide two numbers with error handling in output")
-async def divide_numbers(a: float = Field(..., description="Numerator"), b: float = Field(..., description="Denominator")) -> CalculationResult:
+async def divide_numbers(
+    a: float = Field(..., description="Numerator"), b: float = Field(..., description="Denominator")
+) -> CalculationResult:
     """Divide two numbers with error handling."""
     logger.info(f"Dividing {a} / {b}")
 
@@ -187,7 +190,9 @@ async def echo_list(
 
 @mcp.tool(description="Echo a dictionary of strings (testing dict input/output schema)")
 async def echo_dict(
-    data: dict[str, str] = Field(..., description="Dictionary with string keys and values to echo back"),
+    data: dict[str, str] = Field(
+        ..., description="Dictionary with string keys and values to echo back"
+    ),
 ) -> dict[str, str]:
     """Echo back a dictionary of strings.
 
@@ -217,7 +222,9 @@ class NestedData(BaseModel):
     message: str = Field(..., description="A simple string message")
     num: str = Field(..., description="A large number as string")
     nested_list: list[Any] = Field(..., description="A nested list, can contain strings or lists")
-    nested_dict: dict[str, Any] = Field(..., description="A nested dictionary, can contain strings, lists, or dicts")
+    nested_dict: dict[str, Any] = Field(
+        ..., description="A nested dictionary, can contain strings, lists, or dicts"
+    )
 
 
 @mcp.tool(description="Echo nested list and dictionary structure")
@@ -259,7 +266,9 @@ async def get_server_info() -> dict[str, Any]:
 
 def main() -> None:
     """Main server entry point with transport selection."""
-    parser = argparse.ArgumentParser(description="Output Schema Test MCP Server - Tests outputSchema field support")
+    parser = argparse.ArgumentParser(
+        description="Output Schema Test MCP Server - Tests outputSchema field support"
+    )
     parser.add_argument(
         "--transport",
         choices=["stdio", "http"],
@@ -267,7 +276,9 @@ def main() -> None:
         help="Transport mode (stdio or http)",
     )
     parser.add_argument("--host", default="0.0.0.0", help="HTTP host (only for http transport)")
-    parser.add_argument("--port", type=int, default=9100, help="HTTP port (only for http transport)")
+    parser.add_argument(
+        "--port", type=int, default=9100, help="HTTP port (only for http transport)"
+    )
 
     args = parser.parse_args()
 

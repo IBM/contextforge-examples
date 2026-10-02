@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/test_all_providers.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -25,14 +24,18 @@ except ImportError:
     load_dotenv = None
 
 # Third-Party
-from mcp_eval_server.tools.judge_tools import JudgeTools  # noqa: E402  # pylint: disable=wrong-import-position,no-name-in-module
+from mcp_eval_server.tools.judge_tools import (
+    JudgeTools,  # noqa: E402  # pylint: disable=wrong-import-position,no-name-in-module
+)
 
 # Load .env if available
 if load_dotenv:
     load_dotenv()
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -116,7 +119,9 @@ async def test_all_providers():
         provider = info.get("provider", "unknown")
         if provider not in judge_by_provider:
             judge_by_provider[provider] = []
-        judge_by_provider[provider].append({"name": judge_name, "model": info.get("model_name", "N/A")})
+        judge_by_provider[provider].append(
+            {"name": judge_name, "model": info.get("model_name", "N/A")}
+        )
 
     logger.info("")
     logger.info("📊 Loaded Judges by Provider:")
@@ -145,10 +150,22 @@ async def test_all_providers():
         if model_name in available_judges:
             logger.info(f"   Testing {model_name} ({description})...")
             try:
-                criteria = [{"name": "quality", "description": "Overall quality", "scale": "1-5", "weight": 1.0}]
+                criteria = [
+                    {
+                        "name": "quality",
+                        "description": "Overall quality",
+                        "scale": "1-5",
+                        "weight": 1.0,
+                    }
+                ]
                 rubric = {"criteria": [], "scale_description": {"1": "Poor", "5": "Excellent"}}
 
-                result = await judge_tools.evaluate_response(response="Hi, tell me about this model in one sentence.", criteria=criteria, rubric=rubric, judge_model=model_name)
+                result = await judge_tools.evaluate_response(
+                    response="Hi, tell me about this model in one sentence.",
+                    criteria=criteria,
+                    rubric=rubric,
+                    judge_model=model_name,
+                )
 
                 test_results[model_name] = True
                 logger.info(f"      ✅ Success - Score: {result['overall_score']:.2f}")
@@ -163,7 +180,9 @@ async def test_all_providers():
                 test_results[model_name] = False
                 logger.info(f"      ❌ Failed: {str(e)[:100]}...")
         else:
-            logger.info(f"   {model_name} ({description}): Not available (missing dependencies/credentials)")
+            logger.info(
+                f"   {model_name} ({description}): Not available (missing dependencies/credentials)"
+            )
 
     logger.info("")
 

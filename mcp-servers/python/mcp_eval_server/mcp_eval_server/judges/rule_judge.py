@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/rule_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -9,12 +8,13 @@ Rule-based judge for deterministic evaluations.
 
 # Standard
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import textstat
 
 # Third-Party
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import textstat
 
 # Local
 from .base_judge import (
@@ -31,7 +31,7 @@ from .base_judge import (
 class RuleBasedJudge(BaseJudge):
     """Judge implementation using rule-based metrics."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize rule-based judge.
 
         Args:
@@ -40,14 +40,16 @@ class RuleBasedJudge(BaseJudge):
         super().__init__(config)
 
         # Initialize TF-IDF vectorizer for semantic similarity
-        self.vectorizer = TfidfVectorizer(max_features=10000, stop_words="english", ngram_range=(1, 2), lowercase=True)
+        self.vectorizer = TfidfVectorizer(
+            max_features=10000, stop_words="english", ngram_range=(1, 2), lowercase=True
+        )
 
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,  # pylint: disable=unused-argument
     ) -> EvaluationResult:
         """Evaluate response using rule-based metrics.
@@ -81,7 +83,9 @@ class RuleBasedJudge(BaseJudge):
             metadata={"model": "rule-based", "metrics_used": list(scores.keys())},
         )
 
-    async def _evaluate_criterion(self, response: str, criterion: EvaluationCriteria, context: Optional[str] = None) -> tuple[float, str]:
+    async def _evaluate_criterion(
+        self, response: str, criterion: EvaluationCriteria, context: str | None = None
+    ) -> tuple[float, str]:
         """Evaluate a single criterion.
 
         Args:
@@ -112,7 +116,9 @@ class RuleBasedJudge(BaseJudge):
         # Default to basic quality metrics
         return self._evaluate_basic_quality(response, criterion)
 
-    def _evaluate_length(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_length(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Evaluate response length.
 
         Args:
@@ -138,7 +144,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, reason
 
-    def _evaluate_readability(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_readability(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Evaluate readability using Flesch reading ease.
 
         Args:
@@ -222,7 +230,9 @@ class RuleBasedJudge(BaseJudge):
         # Clamp to reasonable range
         return max(0.0, min(100.0, readability))
 
-    def _evaluate_grammar_spelling(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_grammar_spelling(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Basic grammar and spelling evaluation.
 
         Args:
@@ -270,7 +280,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, reason
 
-    def _evaluate_structure(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_structure(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Evaluate response structure and formatting.
 
         Args:
@@ -317,7 +329,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, reason
 
-    def _evaluate_keywords(self, response: str, criterion: EvaluationCriteria, context: Optional[str] = None) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_keywords(
+        self, response: str, criterion: EvaluationCriteria, context: str | None = None
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Evaluate presence of relevant keywords.
 
         Args:
@@ -337,7 +351,28 @@ class RuleBasedJudge(BaseJudge):
         response_words = set(re.findall(r"\b[a-zA-Z]{3,}\b", response.lower()))
 
         # Remove common stop words
-        stop_words = {"the", "and", "but", "for", "are", "with", "this", "that", "from", "they", "have", "been", "said", "each", "which", "will", "there", "could", "would", "should"}
+        stop_words = {
+            "the",
+            "and",
+            "but",
+            "for",
+            "are",
+            "with",
+            "this",
+            "that",
+            "from",
+            "they",
+            "have",
+            "been",
+            "said",
+            "each",
+            "which",
+            "will",
+            "there",
+            "could",
+            "would",
+            "should",
+        }
         context_keywords = context_words - stop_words
         response_keywords = response_words - stop_words
 
@@ -353,7 +388,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, f"Keyword overlap: {overlap}/{total_context_keywords} ({overlap_ratio:.1%})"
 
-    def _evaluate_sentiment(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_sentiment(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Basic sentiment evaluation.
 
         Args:
@@ -365,8 +402,28 @@ class RuleBasedJudge(BaseJudge):
         """
 
         # Simple word-based sentiment analysis
-        positive_words = {"good", "great", "excellent", "wonderful", "amazing", "fantastic", "helpful", "useful", "beneficial"}
-        negative_words = {"bad", "terrible", "awful", "horrible", "useless", "harmful", "wrong", "error", "problem"}
+        positive_words = {
+            "good",
+            "great",
+            "excellent",
+            "wonderful",
+            "amazing",
+            "fantastic",
+            "helpful",
+            "useful",
+            "beneficial",
+        }
+        negative_words = {
+            "bad",
+            "terrible",
+            "awful",
+            "horrible",
+            "useless",
+            "harmful",
+            "wrong",
+            "error",
+            "problem",
+        }
 
         words = set(response.lower().split())
         positive_count = len(words & positive_words)
@@ -384,7 +441,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, f"Sentiment: {sentiment} (+{positive_count}/-{negative_count})"
 
-    def _evaluate_completeness(self, response: str, criterion: EvaluationCriteria, context: Optional[str] = None) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_completeness(
+        self, response: str, criterion: EvaluationCriteria, context: str | None = None
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Evaluate response completeness.
 
         Args:
@@ -429,7 +488,9 @@ class RuleBasedJudge(BaseJudge):
 
         return score, reason
 
-    def _evaluate_basic_quality(self, response: str, criterion: EvaluationCriteria) -> tuple[float, str]:  # pylint: disable=unused-argument
+    def _evaluate_basic_quality(
+        self, response: str, criterion: EvaluationCriteria
+    ) -> tuple[float, str]:  # pylint: disable=unused-argument
         """Basic quality evaluation combining multiple factors.
 
         Args:
@@ -453,8 +514,8 @@ class RuleBasedJudge(BaseJudge):
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,  # pylint: disable=unused-argument
     ) -> PairwiseResult:
         """Compare two responses using rule-based metrics.
@@ -499,15 +560,24 @@ class RuleBasedJudge(BaseJudge):
             else:
                 criterion_scores[criterion.name] = "tie"
 
-        reasoning = f"Response A score: {eval_a.overall_score:.2f}, Response B score: {eval_b.overall_score:.2f}"
+        reasoning = (
+            f"Response A score: {eval_a.overall_score:.2f}, Response B score: "
+            f"{eval_b.overall_score:.2f}"
+        )
 
-        return PairwiseResult(winner=winner, confidence_score=0.9, reasoning=reasoning, criterion_scores=criterion_scores, margin=margin)  # High confidence for rule-based
+        return PairwiseResult(
+            winner=winner,
+            confidence_score=0.9,
+            reasoning=reasoning,
+            criterion_scores=criterion_scores,
+            margin=margin,
+        )  # High confidence for rule-based
 
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "scoring",  # pylint: disable=unused-argument
     ) -> RankingResult:
         """Rank responses using rule-based scoring.
@@ -526,18 +596,27 @@ class RuleBasedJudge(BaseJudge):
 
         # Evaluate all responses
         evaluations = []
-        for i, response in enumerate(responses):
+        for response in responses:
             evaluation = await self.evaluate_response(response, criteria, rubric, context)
             evaluations.append(evaluation)
 
         # Sort by overall score
         ranked_results = []
         for i, evaluation in enumerate(evaluations):
-            ranked_results.append({"response_index": i, "response": responses[i], "score": evaluation.overall_score, "reasoning": f"Rule-based score: {evaluation.overall_score:.2f}"})
+            ranked_results.append(
+                {
+                    "response_index": i,
+                    "response": responses[i],
+                    "score": evaluation.overall_score,
+                    "reasoning": f"Rule-based score: {evaluation.overall_score:.2f}",
+                }
+            )
 
         ranked_results.sort(key=lambda x: x["score"], reverse=True)
 
-        return RankingResult(rankings=ranked_results, consistency_score=1.0, reasoning="Ranked by rule-based scoring")  # Deterministic, perfectly consistent
+        return RankingResult(
+            rankings=ranked_results, consistency_score=1.0, reasoning="Ranked by rule-based scoring"
+        )  # Deterministic, perfectly consistent
 
     async def evaluate_with_reference(
         self,
@@ -593,5 +672,6 @@ class RuleBasedJudge(BaseJudge):
             missing_elements=list(missing_words)[:10],  # Limit to first 10
             extra_elements=list(extra_words)[:10],
             factual_errors=factual_errors,
-            reasoning=f"Semantic similarity: {similarity:.3f}, Word overlap: {len(common_words)}/{len(reference_words)}",
+            reasoning=f"Semantic similarity: {similarity:.3f}, Word overlap: "
+            f"{len(common_words)}/{len(reference_words)}",
         )

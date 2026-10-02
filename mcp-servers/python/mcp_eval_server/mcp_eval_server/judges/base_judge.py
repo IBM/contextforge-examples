@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Location: ./mcp-servers/python/mcp_eval_server/mcp_eval_server/judges/base_judge.py
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -10,11 +9,12 @@ Base abstract interface for LLM judges.
 # Standard
 import abc
 import os
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Protocol
+
+import orjson
 
 # Third-Party
 from jinja2 import Environment, FileSystemLoader
-import orjson
 from pydantic import BaseModel, Field
 
 
@@ -30,19 +30,23 @@ class EvaluationCriteria(BaseModel):
 class EvaluationRubric(BaseModel):
     """Detailed scoring rubric for evaluation."""
 
-    criteria: List[EvaluationCriteria] = Field(..., description="List of evaluation criteria")
-    scale_description: Dict[str, str] = Field(default_factory=dict, description="Description of what each scale point means")
-    examples: Optional[Dict[str, str]] = Field(default=None, description="Example responses for each scale point")
+    criteria: list[EvaluationCriteria] = Field(..., description="List of evaluation criteria")
+    scale_description: dict[str, str] = Field(
+        default_factory=dict, description="Description of what each scale point means"
+    )
+    examples: dict[str, str] | None = Field(
+        default=None, description="Example responses for each scale point"
+    )
 
 
 class EvaluationResult(BaseModel):
     """Result of an evaluation."""
 
-    scores: Dict[str, float] = Field(..., description="Scores for each criterion")
-    reasoning: Dict[str, str] = Field(..., description="Reasoning for each score")
+    scores: dict[str, float] = Field(..., description="Scores for each criterion")
+    reasoning: dict[str, str] = Field(..., description="Reasoning for each score")
     overall_score: float = Field(..., description="Weighted average overall score")
     confidence: float = Field(..., description="Judge's confidence in the evaluation (0-1)")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 class PairwiseResult(BaseModel):
@@ -51,16 +55,26 @@ class PairwiseResult(BaseModel):
     winner: str = Field(..., description="'A', 'B', or 'tie'")
     confidence_score: float = Field(..., description="Confidence in the decision (0-1)")
     reasoning: str = Field(..., description="Detailed comparison reasoning")
-    criterion_scores: Dict[str, str] = Field(default_factory=dict, description="Winner for each individual criterion")
-    margin: Optional[float] = Field(default=None, description="Strength of preference (0-1, higher = stronger preference)")
+    criterion_scores: dict[str, str] = Field(
+        default_factory=dict, description="Winner for each individual criterion"
+    )
+    margin: float | None = Field(
+        default=None, description="Strength of preference (0-1, higher = stronger preference)"
+    )
 
 
 class RankingResult(BaseModel):
     """Result of ranking multiple responses."""
 
-    rankings: List[Dict[str, Union[str, float]]] = Field(..., description="Ordered list of responses with scores")
-    pairwise_matrix: Optional[List[List[str]]] = Field(default=None, description="Head-to-head comparison matrix")
-    consistency_score: float = Field(..., description="Consistency of rankings across comparisons (0-1)")
+    rankings: list[dict[str, str | float]] = Field(
+        ..., description="Ordered list of responses with scores"
+    )
+    pairwise_matrix: list[list[str]] | None = Field(
+        default=None, description="Head-to-head comparison matrix"
+    )
+    consistency_score: float = Field(
+        ..., description="Consistency of rankings across comparisons (0-1)"
+    )
     reasoning: str = Field(..., description="Overall ranking reasoning")
 
 
@@ -68,16 +82,20 @@ class ReferenceEvaluationResult(BaseModel):
     """Result of evaluation against reference."""
 
     similarity_score: float = Field(..., description="Overall similarity to reference (0-1)")
-    missing_elements: List[str] = Field(default_factory=list, description="Key points from reference not covered")
-    extra_elements: List[str] = Field(default_factory=list, description="Additional information not in reference")
-    factual_errors: List[str] = Field(default_factory=list, description="Identified factual errors")
+    missing_elements: list[str] = Field(
+        default_factory=list, description="Key points from reference not covered"
+    )
+    extra_elements: list[str] = Field(
+        default_factory=list, description="Additional information not in reference"
+    )
+    factual_errors: list[str] = Field(default_factory=list, description="Identified factual errors")
     reasoning: str = Field(..., description="Detailed comparison reasoning")
 
 
 class BaseJudge(abc.ABC):
     """Abstract base class for all LLM judges."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize judge with configuration.
 
         Args:
@@ -90,15 +108,17 @@ class BaseJudge(abc.ABC):
 
         # Set up Jinja2 template environment
         template_dir = os.path.join(os.path.dirname(__file__), "templates")
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True
+        )
 
     @abc.abstractmethod
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
     ) -> EvaluationResult:
         """Evaluate a single response.
@@ -116,8 +136,8 @@ class BaseJudge(abc.ABC):
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> PairwiseResult:
         """Compare two responses.
@@ -133,9 +153,9 @@ class BaseJudge(abc.ABC):
     @abc.abstractmethod
     async def rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "tournament",
     ) -> RankingResult:
         """Rank multiple responses.
@@ -164,7 +184,7 @@ class BaseJudge(abc.ABC):
             tolerance: Matching tolerance ('strict', 'moderate', 'loose')
         """
 
-    def _format_criteria(self, criteria: List[EvaluationCriteria]) -> str:
+    def _format_criteria(self, criteria: list[EvaluationCriteria]) -> str:
         """Format criteria for prompt inclusion.
 
         Args:
@@ -175,7 +195,9 @@ class BaseJudge(abc.ABC):
         """
         formatted = []
         for criterion in criteria:
-            formatted.append(f"- {criterion.name}: {criterion.description} (Scale: {criterion.scale})")
+            formatted.append(
+                f"- {criterion.name}: {criterion.description} (Scale: {criterion.scale})"
+            )
         return "\n".join(formatted)
 
     def _format_rubric(self, rubric: EvaluationRubric) -> str:
@@ -204,7 +226,9 @@ class BaseJudge(abc.ABC):
 
         return "\n".join(parts)
 
-    def _calculate_overall_score(self, scores: Dict[str, float], criteria: List[EvaluationCriteria]) -> float:
+    def _calculate_overall_score(
+        self, scores: dict[str, float], criteria: list[EvaluationCriteria]
+    ) -> float:
         """Calculate weighted overall score.
 
         Args:
@@ -234,7 +258,9 @@ class BaseJudge(abc.ABC):
         template = self.jinja_env.get_template(f"{template_name}.j2")
         return template.render(**kwargs)
 
-    def _create_error_evaluation_result(self, criteria: List[EvaluationCriteria], error: str, raw_response: str = "") -> "EvaluationResult":
+    def _create_error_evaluation_result(
+        self, criteria: list[EvaluationCriteria], error: str, raw_response: str = ""
+    ) -> "EvaluationResult":
         """Create fallback evaluation result when parsing fails.
 
         Args:
@@ -262,9 +288,17 @@ class BaseJudge(abc.ABC):
         Returns:
             Fallback reference evaluation result
         """
-        return ReferenceEvaluationResult(similarity_score=0.5, missing_elements=[], extra_elements=[], factual_errors=[], reasoning=f"Error parsing judge response: {error}")
+        return ReferenceEvaluationResult(
+            similarity_score=0.5,
+            missing_elements=[],
+            extra_elements=[],
+            factual_errors=[],
+            reasoning=f"Error parsing judge response: {error}",
+        )
 
-    def _parse_evaluation_response(self, response_text: str, criteria: List[EvaluationCriteria], **metadata) -> "EvaluationResult":
+    def _parse_evaluation_response(
+        self, response_text: str, criteria: list[EvaluationCriteria], **metadata
+    ) -> "EvaluationResult":
         """Parse JSON response from judge for evaluation.
 
         Args:
@@ -323,7 +357,9 @@ class BaseJudge(abc.ABC):
         except (orjson.JSONDecodeError, KeyError) as e:
             return self._create_error_reference_result(str(e))
 
-    def _parse_pairwise_response(self, response_text: str, original_order: bool) -> "PairwiseResult":
+    def _parse_pairwise_response(
+        self, response_text: str, original_order: bool
+    ) -> "PairwiseResult":
         """Parse JSON response from judge for pairwise comparison.
 
         Args:
@@ -363,14 +399,20 @@ class BaseJudge(abc.ABC):
             )
 
         except (orjson.JSONDecodeError, KeyError) as e:
-            return PairwiseResult(winner="tie", confidence_score=0.3, reasoning=f"Error parsing judge response: {str(e)}", criterion_scores={}, margin=0.0)
+            return PairwiseResult(
+                winner="tie",
+                confidence_score=0.3,
+                reasoning=f"Error parsing judge response: {str(e)}",
+                criterion_scores={},
+                margin=0.0,
+            )
 
     async def _base_pairwise_comparison(
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> "PairwiseResult":
         """Base implementation for pairwise comparison.
@@ -397,9 +439,22 @@ class BaseJudge(abc.ABC):
 
         criteria_text = self._format_criteria(criteria)
 
-        prompt = self._render_template("pairwise", context=context, response_a=response_a, response_b=response_b, criteria_text=criteria_text)
+        prompt = self._render_template(
+            "pairwise",
+            context=context,
+            response_a=response_a,
+            response_b=response_b,
+            criteria_text=criteria_text,
+        )
 
-        messages = [{"role": "system", "content": "You are a professional evaluation expert. Provide fair, detailed comparisons."}, {"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional evaluation expert. Provide fair, detailed "
+                "comparisons.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response_text = await self._make_api_call(messages)  # pylint: disable=no-member
         return self._parse_pairwise_response(response_text, original_order)
@@ -422,14 +477,29 @@ class BaseJudge(abc.ABC):
         Returns:
             Reference evaluation result
         """
-        prompt = self._render_template("reference", response=response, reference=reference, evaluation_type=evaluation_type, tolerance=tolerance)
+        prompt = self._render_template(
+            "reference",
+            response=response,
+            reference=reference,
+            evaluation_type=evaluation_type,
+            tolerance=tolerance,
+        )
 
-        messages = [{"role": "system", "content": "You are a professional evaluation expert. Provide thorough, accurate assessments against reference standards."}, {"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional evaluation expert. Provide thorough, accurate "
+                "assessments against reference standards.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response_text = await self._make_api_call(messages)  # pylint: disable=no-member
         return self._parse_reference_response(response_text)
 
-    async def _rank_by_scoring(self, responses: List[str], criteria: List[EvaluationCriteria], context: Optional[str] = None) -> "RankingResult":
+    async def _rank_by_scoring(
+        self, responses: list[str], criteria: list[EvaluationCriteria], context: str | None = None
+    ) -> "RankingResult":
         """Rank by scoring each response individually.
 
         Args:
@@ -443,22 +513,46 @@ class BaseJudge(abc.ABC):
         # Standard
         import asyncio  # pylint: disable=import-outside-toplevel
 
-        rubric = EvaluationRubric(criteria=criteria, scale_description={"1": "Poor", "2": "Below Average", "3": "Average", "4": "Good", "5": "Excellent"})
+        rubric = EvaluationRubric(
+            criteria=criteria,
+            scale_description={
+                "1": "Poor",
+                "2": "Below Average",
+                "3": "Average",
+                "4": "Good",
+                "5": "Excellent",
+            },
+        )
 
         # Evaluate each response
-        evaluation_tasks = [self.evaluate_response(response, criteria, rubric, context) for response in responses]
+        evaluation_tasks = [
+            self.evaluate_response(response, criteria, rubric, context) for response in responses
+        ]
         evaluations = await asyncio.gather(*evaluation_tasks)
 
         # Sort by overall score
         ranked_results = []
         for i, evaluation in enumerate(evaluations):
-            ranked_results.append({"response_index": i, "response": responses[i], "score": evaluation.overall_score, "reasoning": evaluation.reasoning})
+            ranked_results.append(
+                {
+                    "response_index": i,
+                    "response": responses[i],
+                    "score": evaluation.overall_score,
+                    "reasoning": evaluation.reasoning,
+                }
+            )
 
         ranked_results.sort(key=lambda x: x["score"], reverse=True)
 
-        return RankingResult(rankings=ranked_results, consistency_score=1.0, reasoning="Ranked by individual scoring of each response")
+        return RankingResult(
+            rankings=ranked_results,
+            consistency_score=1.0,
+            reasoning="Ranked by individual scoring of each response",
+        )
 
-    async def _rank_by_tournament(self, responses: List[str], criteria: List[EvaluationCriteria], context: Optional[str] = None) -> "RankingResult":
+    async def _rank_by_tournament(
+        self, responses: list[str], criteria: list[EvaluationCriteria], context: str | None = None
+    ) -> "RankingResult":
         """Rank using tournament-style pairwise comparisons.
 
         Args:
@@ -482,12 +576,14 @@ class BaseJudge(abc.ABC):
         for i in range(n):
             for j in range(i + 1, n):
                 pairs.append((i, j))
-                comparison_tasks.append(self.pairwise_comparison(responses[i], responses[j], criteria, context))
+                comparison_tasks.append(
+                    self.pairwise_comparison(responses[i], responses[j], criteria, context)
+                )
 
         comparisons = await asyncio.gather(*comparison_tasks)
 
         # Count wins
-        for (i, j), comparison in zip(pairs, comparisons):
+        for (i, j), comparison in zip(pairs, comparisons, strict=False):
             if comparison.winner == "A":
                 wins[i] += 1
             elif comparison.winner == "B":
@@ -501,16 +597,33 @@ class BaseJudge(abc.ABC):
 
         ranked_results = []
         for rank, idx in enumerate(ranked_indices):
-            ranked_results.append({"response_index": idx, "response": responses[idx], "score": wins[idx] / (n - 1), "wins": wins[idx], "rank": rank + 1})
+            ranked_results.append(
+                {
+                    "response_index": idx,
+                    "response": responses[idx],
+                    "score": wins[idx] / (n - 1),
+                    "wins": wins[idx],
+                    "rank": rank + 1,
+                }
+            )
 
         # Calculate consistency (simplified)
         total_comparisons = n * (n - 1) / 2
-        win_variance = sum(abs(wins[i] - wins[j]) for i in range(n) for j in range(i + 1, n)) / total_comparisons
+        win_variance = (
+            sum(abs(wins[i] - wins[j]) for i in range(n) for j in range(i + 1, n))
+            / total_comparisons
+        )
         consistency = max(0.0, 1.0 - (win_variance / n))
 
-        return RankingResult(rankings=ranked_results, consistency_score=consistency, reasoning="Ranked by tournament-style pairwise comparisons")
+        return RankingResult(
+            rankings=ranked_results,
+            consistency_score=consistency,
+            reasoning="Ranked by tournament-style pairwise comparisons",
+        )
 
-    async def _rank_by_round_robin(self, responses: List[str], criteria: List[EvaluationCriteria], context: Optional[str] = None) -> "RankingResult":
+    async def _rank_by_round_robin(
+        self, responses: list[str], criteria: list[EvaluationCriteria], context: str | None = None
+    ) -> "RankingResult":
         """Rank using round-robin pairwise comparisons.
 
         Args:
@@ -526,9 +639,9 @@ class BaseJudge(abc.ABC):
 
     async def _base_rank_responses(
         self,
-        responses: List[str],
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        responses: list[str],
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         ranking_method: str = "tournament",
     ) -> "RankingResult":
         """Base implementation for ranking multiple responses.
@@ -564,9 +677,13 @@ class JudgeCapabilities(BaseModel):
     supports_cot: bool = Field(default=True, description="Supports chain-of-thought reasoning")
     supports_pairwise: bool = Field(default=True, description="Supports pairwise comparison")
     supports_ranking: bool = Field(default=True, description="Supports multi-response ranking")
-    supports_reference: bool = Field(default=True, description="Supports reference-based evaluation")
+    supports_reference: bool = Field(
+        default=True, description="Supports reference-based evaluation"
+    )
     max_context_length: int = Field(default=4000, description="Maximum context length in tokens")
-    optimal_temperature: float = Field(default=0.3, description="Optimal temperature for evaluation")
+    optimal_temperature: float = Field(
+        default=0.3, description="Optimal temperature for evaluation"
+    )
     consistency_level: str = Field(default="high", description="Expected consistency level")
 
 
@@ -581,10 +698,10 @@ class JudgeConfig(BaseModel):
     max_tokens: int = Field(default=2000, description="Maximum tokens per response")
 
     # Provider-specific configs
-    api_base_env: Optional[str] = Field(default=None, description="API base URL env var (for Azure)")
-    api_version: Optional[str] = Field(default=None, description="API version (for Azure)")
-    deployment_name: Optional[str] = Field(default=None, description="Deployment name (for Azure)")
-    organization: Optional[str] = Field(default=None, description="Organization (for OpenAI)")
+    api_base_env: str | None = Field(default=None, description="API base URL env var (for Azure)")
+    api_version: str | None = Field(default=None, description="API version (for Azure)")
+    deployment_name: str | None = Field(default=None, description="Deployment name (for Azure)")
+    organization: str | None = Field(default=None, description="Organization (for OpenAI)")
 
 
 class JudgeProtocol(Protocol):
@@ -593,9 +710,9 @@ class JudgeProtocol(Protocol):
     async def evaluate_response(
         self,
         response: str,
-        criteria: List[EvaluationCriteria],
+        criteria: list[EvaluationCriteria],
         rubric: EvaluationRubric,
-        context: Optional[str] = None,
+        context: str | None = None,
         use_cot: bool = True,
     ) -> EvaluationResult:
         """Evaluate a single response.
@@ -616,8 +733,8 @@ class JudgeProtocol(Protocol):
         self,
         response_a: str,
         response_b: str,
-        criteria: List[EvaluationCriteria],
-        context: Optional[str] = None,
+        criteria: list[EvaluationCriteria],
+        context: str | None = None,
         position_bias_mitigation: bool = True,
     ) -> PairwiseResult:
         """Compare two responses.
