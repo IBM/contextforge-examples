@@ -549,7 +549,13 @@ class CedarPolicyPlugin(Plugin):
                             payload = payload.model_copy(update={"result": redacted})
                             return ToolPostInvokeResult(continue_processing=True, modified_payload=payload)
                         else:
-                            return ToolPostInvokeResult(continue_processing=True)
+                            violation = PluginViolation(
+                                reason=CedarResponseTemplates.CEDAR_REASON.format(hook_type=hook_type),
+                                description=CedarResponseTemplates.CEDAR_DESC.format(hook_type=hook_type),
+                                code=CedarCodes.DENIAL_CODE,
+                                details={},
+                            )
+                            return ToolPostInvokeResult(modified_payload=payload, violation=violation, continue_processing=False)
                     else:
                         violation = PluginViolation(
                             reason=CedarResponseTemplates.CEDAR_REASON.format(hook_type=hook_type),

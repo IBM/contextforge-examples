@@ -20,7 +20,7 @@ This plugin supports two ways of defining policies in the configuration file, co
 
 ### Cedar Mode
 
-`plugins/external/cedar/resources/config.yaml`
+`plugins/external/cedar/resources/plugins/config.yaml`
 
 When `policy_lang` is set to cedar, policies are written in the Cedar language under the policy key, using the following structure:
 
@@ -78,7 +78,7 @@ In this example, role is hr, resource is server, and action is hr_tool. The line
 
 ## Installation
 
-1. In the folder `plugins/external/cedar`,  copy `.env.example` to `.env` file.
+1. In the folder `plugins/external/cedar`,  copy `.env.template` to `.env` file.
 2. If you are using `policy_lang` to be `cedar`, add the plugin configuration to `plugins/external/cedar/resources/plugins/config.yaml`:
 
 ```yaml
@@ -152,14 +152,14 @@ plugins:
           principal: Role::"admin"
           action:
             - Action::"view_full_output"
-          resource: Resource::""https://example.com/data"" #Resource::<resource_uri>
+          resource: Resource::"https://example.com/data" #Resource::<resource_uri>
 
         - id: allow-employee-redacted-resources # policy for resources
           effect: Permit
           principal: Role::"employee"
           action:
             - Action::"view_redacted_output"
-          resource: Resource::""https://example.com/data"" #Resource::<resource_uri>
+          resource: Resource::"https://example.com/data" #Resource::<resource_uri>
 
         ### Prompt invocation policies ###
         - id: allow-admin-prompts # policy for resources
@@ -272,7 +272,7 @@ Here, in the above polcicy, given a prompt template `judge_prompts`, user of rol
 ```
 
 Here, `Resource` word used in policy, is if resource hooks are invoked. So, in the above policy,
-user with role `admin` is only allowed to view full output of uri `https://example.com/data`. Where, the user is of `employee` role, it can only see the redacted versionaaaaa of the resource output.
+user with role `admin` is only allowed to view full output of uri `https://example.com/data`. Where, the user is of `employee` role, it can only see the redacted version of the resource output.
 
 
 #### policy_output_keywords
@@ -288,7 +288,7 @@ any of the tool, prompt, resource or agent in MCP gateway, it can provide the ke
 
 
 
-3. Now, the policy and plugin configurations are defined in `resources/config.yaml` file, next step is build this as an external MCP server.
+3. Now, the policy and plugin configurations are defined in `resources/plugins/config.yaml` file, next step is build this as an external MCP server.
 
 * `make venv`: This will create a virtual environment to develop or build your plugin.
 * `make install && make install-dev`: To install all the required libraries in the environment.
@@ -306,8 +306,7 @@ INFO:     127.0.0.1:55196 - "GET /health HTTP/1.1" 200 OK
 
 ```
 
-4. Now, you can add this external plugin configuration, in `plugins/config.yaml`:
-3. The next step is to enable the opa plugin which you can do by adding `PLUGINS_ENABLED=true` and the following blob in `plugins/config.yaml` file. This will indicate that OPA Plugin is running as an external MCP server.
+4. The next step is to enable the CedarPolicyPlugin which you can do by adding `PLUGINS_ENABLED=true` and the following blob in `plugins/config.yaml` file. This will indicate that CedarPolicyPlugin is running as an external MCP server:
 
   ```yaml
   - name: "CedarPolicyPlugin"
@@ -336,7 +335,7 @@ export MCPGATEWAY_BEARER_TOKEN=$(python3 -m mcpgateway.utils.create_jwt_token --
 ```
 
 
-1. Add server fast-time that exposes git tools in the mcp gateway
+1. Add server fast-time (running `mcp-server-git`) that exposes git tools in the mcp gateway
 
 Run the mcp server
 
@@ -378,11 +377,11 @@ This will start CedarPolicyPlugin on port `8000`.
       url: http://127.0.0.1:8000/mcp
   ```
 
-2. To test cedar plugin from the UI
+5. To test cedar plugin from the UI
 Invoke the `fast-time-git-status` from the UI, with `admin` as role.
 The request will be allowed by the CedarPolicyPlugin.
 
-If you switch to a another tool which is not in the policy `fast-time-git-show` expect denial by the CedarPolicyPlugin. For more details into policy, `plugins/external/cedar/resources/config.yaml`
+If you switch to a another tool which is not in the policy `fast-time-git-show` expect denial by the CedarPolicyPlugin. For more details into policy, `plugins/external/cedar/resources/plugins/config.yaml`
 You get the following as output in the UI:
 ```json
   {

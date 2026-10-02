@@ -632,3 +632,36 @@ async def test_cedarpolicyplugin_resource_post_fetch_custom_dsl_rbac():
     assert allow_count == 2
     assert deny_count == 1
     assert redact_count == 1
+
+
+# This test case verifies that tool_post_invoke denies when tool action is permitted but neither full nor redacted view is permitted
+@pytest.mark.asyncio
+async def test_cedarpolicyplugin_post_tool_invoke_both_views_denied():
+    """Test tool_post_invoke denies when tool action is permitted but view is denied."""
+    policy_config = [
+        {
+            "id": "allow-tool-only",
+            "effect": "Permit",
+            "principal": 'Role::"viewer"',
+            "action": ['Action::"read_data"'],
+            "resource": ['Server::"data_tool"'],
+        },
+    ]
+    policy_output_keywords = {"view_full": "view_full_output", "view_redacted": "view_redacted_output"}
+    config = PluginConfig(
+        name="test",
+        kind="cedarpolicyplugin.CedarPolicyPlugin",
+        hooks=["tool_post_invoke"],
+        config={"policy_lang": "cedar", "policy": policy_config, "policy_output_keywords": policy_output_keywords},
+    )
+    plugin = CedarPolicyPlugin(config)
+    info = {"dave": "viewer"}
+    plugin._set_jwt_info(info)
+
+    payload = ToolPostInvokePayload(name="read_data", result={"text": "sensitive data"})
+    context = PluginContext(global_context=GlobalContext(request_id="1", server_id="data_tool", user="dave"))
+    result = await plugin.tool_post_invoke(payload, context)
+
+    assert result.continue_processing is False
+    assert result.violation is not None
+    assert result.violation.code == "DENY"

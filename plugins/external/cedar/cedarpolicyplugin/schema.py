@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A schema file for OPA plugin.
+"""A schema file for Cedar plugin.
 
 Copyright 2025
 SPDX-License-Identifier: Apache-2.0
@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 
 class CedarInput(BaseModel):
-    """BaseOPAInputKeys
+    """BaseCedarInputKeys
 
     Attributes:
         user (str) : specifying the user
