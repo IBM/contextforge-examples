@@ -38,7 +38,7 @@ chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = "0.10.4"
 
 # Official MCP Rust SDK
-rmcp = { version = "3.0", features = ["server", "macros", "transport-streamable-http-server"] }
+rmcp = { version = "3", features = ["server", "macros", "transport-streamable-http-server"] }
 
 # Cancellation token for graceful shutdown of SSE streams
 tokio-util = "0.7"
