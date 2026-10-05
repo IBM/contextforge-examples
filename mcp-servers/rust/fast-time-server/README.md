@@ -20,6 +20,15 @@ Ultra-fast MCP server written in Rust for performance testing and benchmarking. 
   - `verify-protocol` - Reports the MCP protocol version active for the current request
   - `whoami` - Reflects the HTTP headers received with the tool call as a lowercased JSON map
 
+- **Prompts** (each seeds a conversation that drives the tools above):
+  - `current_time` - Ask for the current time in a timezone (`get_system_time`)
+  - `convert_time` - Convert a time between timezones (`convert_time`)
+  - `server_diagnostics` - Health report from `get_stats` + `verify-protocol`
+- **Resources** (mirroring the same surface):
+  - `config://timezones` - The timezone formats every time entry point accepts
+  - `server://info` - Server identity and protocol versions (mirrors `/version`)
+  - `server://stats` - Live request counter (mirrors `get_stats`)
+  - `time://now/{+timezone}` - Resource template mirroring `get_system_time` (RFC 6570 reserved expansion, so IANA names and `+HH:MM` offsets stay unencoded)
 ## Quick Start
 
 ```bash
@@ -127,6 +136,82 @@ response, never in server logs. Example:
   "mcp-session-id": "…"
 }
 ```
+
+## Prompts
+
+Each prompt renders a user message that asks the model to drive one of this
+server's own tools, with the same arguments the tools accept:
+
+| Name | Arguments | Drives |
+|------|-----------|-------|
+| `current_time` | `timezone` (optional, default `UTC`) | `get_system_time` |
+| `convert_time` | `time`, `source_timezone`, `target_timezone` (all required) | `convert_time` |
+| `server_diagnostics` | none | `get_stats` + `verify-protocol` |
+
+Modern era (`2026-07-28`, stateless — note `Mcp-Name` carries the prompt name):
+
+```bash
+curl -s -X POST http://localhost:9080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: prompts/get' \
+  -H 'Mcp-Name: current_time' \
+  -d '{"jsonrpc":"2.0","method":"prompts/get","params":{"name":"current_time","arguments":{"timezone":"Asia/Tokyo"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":1}'
+```
+
+On the legacy era the same request is sent with an `mcp-session-id` header
+after `initialize`, exactly like `tools/call`.
+
+## Resources
+
+Resources mirror the server's existing surface so tool and resource clients
+see the same data:
+
+| URI | MIME type | Mirrors |
+|-----|-----------|---------|
+| `config://timezones` | `text/plain` | The timezone formats `parse_timezone` accepts |
+| `server://info` | `application/json` | The `/version` REST endpoint |
+| `server://stats` | `application/json` | The `get_stats` tool |
+| `time://now/{+timezone}` (template) | `text/plain` | The `get_system_time` tool and `/api/time` |
+
+`resources/read` resolves template URIs exactly like `get_system_time`:
+unknown URIs fail with `RESOURCE_NOT_FOUND` on the legacy era (rewritten to
+invalid params at `2026-07-28`), and a bad timezone reports the same
+"Invalid timezone" wording as the tools.
+
+```bash
+# List resources and templates (stateless, 2026-07-28)
+curl -s -X POST http://localhost:9080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: resources/list' \
+  -d '{"jsonrpc":"2.0","method":"resources/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":1}'
+
+# Read a template instance (Mcp-Name carries the URI for resources/read)
+curl -s -X POST http://localhost:9080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: resources/read' \
+  -H 'Mcp-Name: time://now/Asia/Tokyo' \
+  -d '{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"time://now/Asia/Tokyo","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}},"id":2}'
+```
+
+### 2026-07-28 conformance
+
+Prompts and resources follow the same wire rules the tools already use:
+
+- `prompts/list`, `resources/list` and `resources/templates/list` responses
+  carry `resultType: "complete"` plus the SEP-2549 cache directives
+  (`cacheScope: "private"`, `ttlMs: 0`) on the modern era, and omit all
+  three on legacy sessions.
+- `resources/read` responses carry the same directives with `ttlMs: 0`
+  (nothing this server returns is safe to cache: the time and stats
+  resources are live values).
+- Both capabilities are advertised in `initialize` (legacy) and
+  `server/discover` (modern).
 
 ### SSE Streaming
 
