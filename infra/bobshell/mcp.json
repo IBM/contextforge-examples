@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "disabled": false
+    },
+    "example-remote": {
+      "httpURL": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer replace-me"
+      },
+      "disabled": true
+    }
+  }
+}
