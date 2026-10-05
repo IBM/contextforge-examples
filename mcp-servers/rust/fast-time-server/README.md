@@ -28,7 +28,7 @@ Ultra-fast MCP server written in Rust for performance testing and benchmarking. 
   - `config://timezones` - The timezone formats every time entry point accepts
   - `server://info` - Server identity and protocol versions (mirrors `/version`)
   - `server://stats` - Live request counter (mirrors `get_stats`)
-  - `time://now/{timezone}` - Resource template mirroring `get_system_time`
+  - `time://now/{+timezone}` - Resource template mirroring `get_system_time` (RFC 6570 reserved expansion, so IANA names and `+HH:MM` offsets stay unencoded)
 ## Quick Start
 
 ```bash
@@ -173,7 +173,7 @@ see the same data:
 | `config://timezones` | `text/plain` | The timezone formats `parse_timezone` accepts |
 | `server://info` | `application/json` | The `/version` REST endpoint |
 | `server://stats` | `application/json` | The `get_stats` tool |
-| `time://now/{timezone}` (template) | `text/plain` | The `get_system_time` tool and `/api/time` |
+| `time://now/{+timezone}` (template) | `text/plain` | The `get_system_time` tool and `/api/time` |
 
 `resources/read` resolves template URIs exactly like `get_system_time`:
 unknown URIs fail with `RESOURCE_NOT_FOUND` on the legacy era (rewritten to

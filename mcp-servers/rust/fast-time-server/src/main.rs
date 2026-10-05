@@ -18,7 +18,7 @@
 //
 // Resources mirror the same surface:
 // - config://timezones, server://info, server://stats (static/dynamic docs)
-// - time://now/{timezone} resource template (get_system_time as a resource)
+// - time://now/{+timezone} resource template (get_system_time as a resource)
 //
 // Transport: Streamable HTTP (no auth) via the official MCP Rust SDK (rmcp).
 // Dual-era by default: legacy 2025-11-25 (initialize handshake + sessions)
@@ -78,12 +78,15 @@ const MCP_PROTOCOL_VERSION_MODERN: &str = "2026-07-28";
 const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
     &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28];
 /// Resource URIs and the RFC 6570 template kept in one place so
-/// `resources/list` and `resources/read` cannot drift apart.
+/// `resources/list` and `resources/read` cannot drift apart. The template
+/// uses reserved expansion (`{+timezone}`) so RFC 6570 clients leave the
+/// `/`, `+`, and `:` of IANA names and fixed offsets unencoded, which is
+/// what the reader parses.
 const TIMEZONES_RESOURCE_URI: &str = "config://timezones";
 const SERVER_INFO_RESOURCE_URI: &str = "server://info";
 const SERVER_STATS_RESOURCE_URI: &str = "server://stats";
 const TIME_NOW_RESOURCE_PREFIX: &str = "time://now/";
-const TIME_NOW_URI_TEMPLATE: &str = "time://now/{timezone}";
+const TIME_NOW_URI_TEMPLATE: &str = "time://now/{+timezone}";
 
 /// MCP era selection, chosen at startup via the `MCP_PROTOCOL_MODE`
 /// environment variable: `legacy` serves only 2025-11-25, `modern` only
@@ -596,10 +599,11 @@ impl FastTimeServer {
         Parameters(args): Parameters<CurrentTimePromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let timezone = args.timezone.unwrap_or_else(|| "UTC".to_string());
+        let arguments = json!({ "timezone": timezone });
         Ok(vec![PromptMessage::new_text(
             Role::User,
             format!(
-                "Call the get_system_time tool with {{\"timezone\": \"{timezone}\"}} and report the timestamp it returns, including its UTC offset."
+                "Call the get_system_time tool with {arguments} and report the timestamp it returns, including its UTC offset."
             ),
         )])
     }
@@ -612,12 +616,14 @@ impl FastTimeServer {
         &self,
         Parameters(args): Parameters<ConvertTimePromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
+        let arguments = json!({
+            "time": args.time,
+            "source_timezone": args.source_timezone,
+            "target_timezone": args.target_timezone,
+        });
         Ok(vec![PromptMessage::new_text(
             Role::User,
-            format!(
-                "Call the convert_time tool with {{\"time\": \"{}\", \"source_timezone\": \"{}\", \"target_timezone\": \"{}\"}} and state the converted time.",
-                args.time, args.source_timezone, args.target_timezone
-            ),
+            format!("Call the convert_time tool with {arguments} and state the converted time."),
         )])
     }
 
@@ -642,7 +648,7 @@ fn resource_catalog() -> Vec<Resource> {
     vec![
         Resource::new(TIMEZONES_RESOURCE_URI, "supported_timezones")
             .with_description(
-                "Timezone formats accepted by the time tools, the time://now/{timezone} resource template, and /api/time.",
+                "Timezone formats accepted by the time tools, the time://now/{+timezone} resource template, and /api/time.",
             )
             .with_mime_type("text/plain"),
         Resource::new(SERVER_INFO_RESOURCE_URI, "server_info")
@@ -656,8 +662,7 @@ fn resource_catalog() -> Vec<Resource> {
     ]
 }
 
-/// The single dynamic entry point: `time://now/{timezone}` resolves exactly
-/// like the `get_system_time` tool and `/api/time`.
+/// The single dynamic entry point: `time://now/{+timezone}` resolves exactly
 fn resource_templates() -> Vec<ResourceTemplate> {
     vec![ResourceTemplate::new(TIME_NOW_URI_TEMPLATE, "current_time")
         .with_description("Current time in an IANA timezone or fixed UTC offset (mirrors the get_system_time tool).")
@@ -670,7 +675,7 @@ fn timezones_document() -> String {
         "fast-time-server accepted timezone formats",
         "=========================================",
         "",
-        "The get_system_time and convert_time tools, the time://now/{timezone}",
+        "The get_system_time and convert_time tools, the time://now/{+timezone}",
         "resource template, and the /api/time endpoint all accept the same values:",
         "",
         "- UTC or GMT (case-insensitive)",
@@ -1687,7 +1692,7 @@ mod tests {
         .await;
         let templates = body["result"]["resourceTemplates"].as_array().unwrap();
         assert_eq!(templates.len(), 1);
-        assert_eq!(templates[0]["uriTemplate"], "time://now/{timezone}");
+        assert_eq!(templates[0]["uriTemplate"], "time://now/{+timezone}");
 
         // resources/read: static document.
         let body = legacy_jsonrpc(
@@ -1768,6 +1773,118 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("Mars/Olympus")
+        );
+    }
+
+    /// RFC 6570 clients expanding the advertised template must get URIs the
+    /// reader accepts: reserved expansion leaves the `/` of IANA names and
+    /// the `+`/`:` of fixed offsets unencoded, exactly what `parse_timezone`
+    /// expects.
+    #[tokio::test]
+    async fn test_resource_template_expansion_matches_reader() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        // The advertised template must use reserved expansion; simple
+        // expansion ({timezone}) would percent-encode the values below into
+        // URIs the reader rejects.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/templates/list",
+            json!({}),
+            64,
+        )
+        .await;
+        let templates = body["result"]["resourceTemplates"].as_array().unwrap();
+        assert_eq!(templates[0]["uriTemplate"], "time://now/{+timezone}");
+
+        for (timezone, expected_offset) in [("Asia/Tokyo", "+09:00"), ("+05:30", "+05:30")] {
+            let body = legacy_jsonrpc(
+                &router,
+                &session_id,
+                "resources/read",
+                json!({ "uri": format!("time://now/{timezone}") }),
+                65,
+            )
+            .await;
+            let text = body["result"]["contents"][0]["text"].as_str().unwrap();
+            assert!(
+                text.ends_with(expected_offset),
+                "expanded {timezone} should read as {expected_offset}: {text}"
+            );
+        }
+    }
+
+    /// Hostile prompt arguments (quotes, backslashes, newlines) must survive
+    /// as JSON string values instead of corrupting the embedded tool
+    /// arguments or making them unparseable.
+    #[tokio::test]
+    async fn test_current_time_prompt_arguments_round_trip() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        let hostile = "UTC\", \"timezone\": \"Asia/Tokyo\\\n\\";
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({ "name": "current_time", "arguments": { "timezone": hostile } }),
+            66,
+        )
+        .await;
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        let embedded = text
+            .strip_prefix("Call the get_system_time tool with ")
+            .and_then(|rest| {
+                rest.strip_suffix(" and report the timestamp it returns, including its UTC offset.")
+            })
+            .expect("prompt text should embed the serialized arguments");
+        let parsed: serde_json::Value =
+            serde_json::from_str(embedded).expect("embedded arguments should be valid JSON");
+        assert_eq!(parsed, json!({ "timezone": hostile }));
+    }
+
+    #[tokio::test]
+    async fn test_convert_time_prompt_arguments_round_trip() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        let hostile_time = "2026-10-04\"\\\n12:00:00";
+        let hostile_zone = "UTC\", \"target_timezone\": \"Asia/Tokyo";
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({
+                "name": "convert_time",
+                "arguments": {
+                    "time": hostile_time,
+                    "source_timezone": hostile_zone,
+                    "target_timezone": "-08:00"
+                }
+            }),
+            67,
+        )
+        .await;
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        let embedded = text
+            .strip_prefix("Call the convert_time tool with ")
+            .and_then(|rest| rest.strip_suffix(" and state the converted time."))
+            .expect("prompt text should embed the serialized arguments");
+        let parsed: serde_json::Value =
+            serde_json::from_str(embedded).expect("embedded arguments should be valid JSON");
+        assert_eq!(
+            parsed,
+            json!({
+                "time": hostile_time,
+                "source_timezone": hostile_zone,
+                "target_timezone": "-08:00"
+            })
         );
     }
 
