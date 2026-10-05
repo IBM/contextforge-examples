@@ -1,0 +1,61 @@
+# Sample Docker Compose configuration for the bobshell container.
+#
+# The container takes two configurations, both wired up below with Compose
+# mechanisms:
+#
+#   1. Bobshell API secret  -> Compose `secrets:` (file-mounted at
+#      /run/secrets/bob_api_key, exported as BOB_API_KEY by the entrypoint).
+#      Alternative: set BOB_API_KEY in the environment instead (see below).
+#
+#   2. MCP configuration     -> Compose `configs:` (file-mounted at
+#      /etc/bob/mcp.json, installed as bobshell's user-global
+#      ~/.bob/settings/mcp.json by the entrypoint).
+#
+# Prerequisites:
+#   mkdir -p secrets workspace
+#   printf '%s' 'your-bob-api-key' > secrets/bob_api_key.txt
+#
+# Interactive session:
+#   docker compose run --rm bobshell
+#
+# Headless task:
+#   docker compose run --rm bobshell bob run --accept-license --trust "Explain this project"
+#
+# Build from source instead of pulling:
+#   docker compose build
+
+services:
+  bobshell:
+    image: ghcr.io/ibm/cfex-bobshell:latest
+    build:
+      context: .
+      dockerfile: Containerfile
+    init: true
+    tty: true
+    stdin_open: true
+    working_dir: /workspace
+    volumes:
+      # Project Bob Shell works on (pre-trusted inside the container).
+      - ./workspace:/workspace
+      # Persist sessions, tasks, and settings across runs. On first use the
+      # image's baked-in license consent and trust entries are copied in.
+      - bob-state:/opt/app-root/src/.bob
+    configs:
+      - source: bob-mcp-config
+        target: /etc/bob/mcp.json
+    secrets:
+      - bob_api_key
+    # Alternative to the secrets block above:
+    # environment:
+    #   BOB_API_KEY: ${BOB_API_KEY:?set BOB_API_KEY or create secrets/bob_api_key.txt}
+
+configs:
+  bob-mcp-config:
+    file: ./mcp.json
+
+secrets:
+  bob_api_key:
+    file: ./secrets/bob_api_key.txt
+
+volumes:
+  bob-state:

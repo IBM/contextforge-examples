@@ -1,0 +1,4 @@
+# Never commit secrets or local state
+secrets/
+workspace/
+.env
