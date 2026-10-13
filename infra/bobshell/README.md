@@ -5,6 +5,16 @@ as a container image on `registry.access.redhat.com/ubi10/nodejs-24`.
 
 - Bob Shell installed via the [official installer](https://bob.ibm.com/docs/shell/getting-started/install-and-setup)
   (SHA256-verified, `npm install -g`).
+- [acpbox](https://pypi.org/project/acpbox/) — the OpenAI-compatible HTTP
+  gateway to the Agent Client Protocol — installed from PyPI on Python 3.12
+  and preconfigured via `ACPBOX_ACP_COMMAND=["bob","acp","--trust"]` to spawn
+  one `bob acp` process per gateway worker, with ACP sessions rooted at the
+  pre-trusted `/workspace` (`ACPBOX_ACP_WORKSPACE`). Run it with
+  `docker run -p 8080:8080 … bobshell acpbox` to expose Bob Shell behind an
+  OpenAI-style `/v1` API (default port 8080); both settings are overridable
+  with `-e`. (`--trust` is required: `bob acp` rejects untrusted workspaces
+  and does not read `trustedFolders.json`; since acpbox pins the session
+  cwd, only `/workspace` is trusted in practice.)
 - IBM license pre-accepted and `/workspace` pre-trusted at image build time, so
   `bob` never blocks on first-run prompts (see
   [trusted folders](https://bob.ibm.com/docs/shell/security/trusted-folders)).
@@ -82,6 +92,12 @@ build time:
 
 ```bash
 docker build --build-arg BOB_VERSION=2.0.5 -t bobshell .
+```
+
+acpbox can be pinned the same way:
+
+```bash
+docker build --build-arg ACPBOX_VERSION=0.2.3 -t bobshell .
 ```
 
 ## Publishing (CI)
