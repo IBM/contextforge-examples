@@ -13,6 +13,13 @@
 // - verify-protocol: Reports the MCP protocol version of the current request
 // - whoami: Reflects the HTTP headers of the tool-call request
 //
+// Prompts seed conversations that drive those tools:
+// - current_time / convert_time / server_diagnostics
+//
+// Resources mirror the same surface:
+// - config://timezones, server://info, server://stats (static/dynamic docs)
+// - time://now/{+timezone} resource template (get_system_time as a resource)
+//
 // Transport: Streamable HTTP (no auth) via the official MCP Rust SDK (rmcp).
 // Dual-era by default: legacy 2025-11-25 (initialize handshake + sessions)
 // and modern 2026-07-28 (stateless, per-request _meta) are served
@@ -29,19 +36,24 @@ use chrono::{DateTime, FixedOffset, SecondsFormat, TimeZone, Utc};
 use chrono_tz::Tz;
 use rand_distr::Distribution;
 use rand_distr::Normal;
+use rmcp::handler::server::prompt::PromptContext;
+use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CacheScope, CallToolResult, ContentBlock, Implementation, InitializeRequestParams,
-    InitializeResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion, ServerCapabilities,
-    ServerInfo,
+    CacheScope, CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResponse,
+    Implementation, InitializeRequestParams, InitializeResult, ListPromptsResult,
+    ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    PromptMessage, ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse,
+    ReadResourceResult, Resource, ResourceContents, ResourceTemplate, Role, ServerCapabilities,
+    ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use rmcp::{ErrorData as McpError, Json, RoleServer, ServerHandler, schemars};
-use rmcp::{tool, tool_handler, tool_router};
+use rmcp::{prompt, prompt_router, tool, tool_handler, tool_router};
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -65,6 +77,16 @@ const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const MCP_PROTOCOL_VERSION_MODERN: &str = "2026-07-28";
 const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
     &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28];
+/// Resource URIs and the RFC 6570 template kept in one place so
+/// `resources/list` and `resources/read` cannot drift apart. The template
+/// uses reserved expansion (`{+timezone}`) so RFC 6570 clients leave the
+/// `/`, `+`, and `:` of IANA names and fixed offsets unencoded, which is
+/// what the reader parses.
+const TIMEZONES_RESOURCE_URI: &str = "config://timezones";
+const SERVER_INFO_RESOURCE_URI: &str = "server://info";
+const SERVER_STATS_RESOURCE_URI: &str = "server://stats";
+const TIME_NOW_RESOURCE_PREFIX: &str = "time://now/";
+const TIME_NOW_URI_TEMPLATE: &str = "time://now/{+timezone}";
 
 /// MCP era selection, chosen at startup via the `MCP_PROTOCOL_MODE`
 /// environment variable: `legacy` serves only 2025-11-25, `modern` only
@@ -270,6 +292,7 @@ struct SharedState {
 struct FastTimeServer {
     state: Arc<SharedState>,
     tool_router: ToolRouter<Self>,
+    prompt_router: PromptRouter<Self>,
     mode: ProtocolMode,
 }
 
@@ -300,6 +323,22 @@ struct GetSystemTimeRequest {
 struct ConvertTimeRequest {
     time: String,
     source_timezone: String,
+    target_timezone: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CurrentTimePromptArgs {
+    /// IANA timezone name or fixed UTC offset (defaults to UTC)
+    timezone: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ConvertTimePromptArgs {
+    /// Time value to convert, e.g. 2026-10-04T12:00:00Z or 2026-10-04 12:00:00
+    time: String,
+    /// IANA timezone name or fixed UTC offset the time is expressed in
+    source_timezone: String,
+    /// IANA timezone name or fixed UTC offset to convert the time to
     target_timezone: String,
 }
 
@@ -349,12 +388,20 @@ fn protocol_report(
     }
 }
 
+/// True when the active request speaks the modern 2026-07-28 revision: the
+/// per-request `_meta` version is present and modern. Legacy-era requests
+/// carry no `_meta` version and resolve to `false`.
+fn is_modern_request(context: &RequestContext<RoleServer>) -> bool {
+    context.meta.protocol_version() == Some(ProtocolVersion::V_2026_07_28)
+}
+
 #[tool_router]
 impl FastTimeServer {
     fn new(mode: ProtocolMode) -> Self {
         Self {
             state: Arc::new(SharedState::default()),
             tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
             mode,
         }
     }
@@ -538,6 +585,170 @@ impl FastTimeServer {
     }
 }
 
+/// Prompts mirror the tool surface: each renders a user message that asks
+/// the model to drive one of this server's own tools, with arguments typed
+/// by structs in the same style the tools use (the SDK derives the advertised
+/// prompt arguments from the schema).
+#[prompt_router]
+impl FastTimeServer {
+    #[prompt(
+        description = "Ask the model to report the current time in a timezone using the get_system_time tool."
+    )]
+    fn current_time(
+        &self,
+        Parameters(args): Parameters<CurrentTimePromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let timezone = args.timezone.unwrap_or_else(|| "UTC".to_string());
+        let arguments = json!({ "timezone": timezone });
+        Ok(vec![PromptMessage::new_text(
+            Role::User,
+            format!(
+                "Call the get_system_time tool with {arguments} and report the timestamp it returns, including its UTC offset."
+            ),
+        )])
+    }
+
+    #[prompt(
+        name = "convert_time",
+        description = "Ask the model to convert a time between timezones using the convert_time tool."
+    )]
+    fn convert_time_prompt(
+        &self,
+        Parameters(args): Parameters<ConvertTimePromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let arguments = json!({
+            "time": args.time,
+            "source_timezone": args.source_timezone,
+            "target_timezone": args.target_timezone,
+        });
+        Ok(vec![PromptMessage::new_text(
+            Role::User,
+            format!("Call the convert_time tool with {arguments} and state the converted time."),
+        )])
+    }
+
+    #[prompt(
+        description = "Ask the model for a server health report built from the get_stats and verify-protocol tools."
+    )]
+    fn server_diagnostics(&self) -> Result<Vec<PromptMessage>, McpError> {
+        Ok(vec![PromptMessage::new_text(
+            Role::User,
+            "Call the get_stats tool, then the verify-protocol tool, and summarize the results: the number of requests handled so far, plus the MCP protocol version and transport that served the request.".to_string(),
+        )])
+    }
+}
+
+// ============================================================================
+// Resources
+// ============================================================================
+
+/// The static registry behind `resources/list`; each entry mirrors a tool or
+/// REST endpoint the server already exposes.
+fn resource_catalog() -> Vec<Resource> {
+    vec![
+        Resource::new(TIMEZONES_RESOURCE_URI, "supported_timezones")
+            .with_description(
+                "Timezone formats accepted by the time tools, the time://now/{+timezone} resource template, and /api/time.",
+            )
+            .with_mime_type("text/plain"),
+        Resource::new(SERVER_INFO_RESOURCE_URI, "server_info")
+            .with_description(
+                "Server identity and the MCP protocol versions this instance serves (mirrors the /version endpoint).",
+            )
+            .with_mime_type("application/json"),
+        Resource::new(SERVER_STATS_RESOURCE_URI, "server_stats")
+            .with_description("Live request counter (mirrors the get_stats tool).")
+            .with_mime_type("application/json"),
+    ]
+}
+
+/// The single dynamic entry point: `time://now/{+timezone}` resolves exactly
+fn resource_templates() -> Vec<ResourceTemplate> {
+    vec![ResourceTemplate::new(TIME_NOW_URI_TEMPLATE, "current_time")
+        .with_description("Current time in an IANA timezone or fixed UTC offset (mirrors the get_system_time tool).")
+        .with_mime_type("text/plain")]
+}
+
+/// Documented mirror of the values `parse_timezone` accepts.
+fn timezones_document() -> String {
+    [
+        "fast-time-server accepted timezone formats",
+        "=========================================",
+        "",
+        "The get_system_time and convert_time tools, the time://now/{+timezone}",
+        "resource template, and the /api/time endpoint all accept the same values:",
+        "",
+        "- UTC or GMT (case-insensitive)",
+        "- IANA timezone names, e.g. America/New_York, Europe/London, Asia/Tokyo",
+        "- Fixed UTC offsets as +HH:MM or -HH:MM, e.g. +05:30, -08:00",
+        "",
+        "Any other value is rejected with an \"Invalid timezone\" error.",
+    ]
+    .join("\n")
+}
+
+/// JSON mirror of the `/version` REST endpoint.
+fn server_info_document(mode: ProtocolMode) -> String {
+    json!({
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "protocol_mode": mode.as_str(),
+        "mcp_versions": mode
+            .supported_versions()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+/// JSON mirror of the `get_stats` tool payload.
+fn server_stats_document(requests_handled: u64) -> String {
+    json!({
+        "server": APP_NAME,
+        "version": APP_VERSION,
+        "requests_handled": requests_handled,
+    })
+    .to_string()
+}
+
+impl FastTimeServer {
+    /// Resolve one resource URI to its contents, or a protocol error:
+    /// `RESOURCE_NOT_FOUND` for unknown URIs (the SDK rewrites it to
+    /// `invalid params` for 2026-07-28 peers) and `invalid params` with the
+    /// same wording the tools use for bad timezones.
+    fn read_resource_contents(&self, uri: &str) -> Result<ResourceContents, McpError> {
+        match uri {
+            TIMEZONES_RESOURCE_URI => Ok(ResourceContents::text(timezones_document(), uri)),
+            SERVER_INFO_RESOURCE_URI => {
+                Ok(ResourceContents::text(server_info_document(self.mode), uri)
+                    .with_mime_type("application/json"))
+            }
+            SERVER_STATS_RESOURCE_URI => Ok(ResourceContents::text(
+                server_stats_document(self.state.request_count.load(Ordering::Relaxed)),
+                uri,
+            )
+            .with_mime_type("application/json")),
+            _ => {
+                let Some(timezone) = uri.strip_prefix(TIME_NOW_RESOURCE_PREFIX) else {
+                    return Err(McpError::resource_not_found(
+                        format!("unknown resource: {uri}"),
+                        None,
+                    ));
+                };
+                parse_timezone(timezone)
+                    .map(|tz| ResourceContents::text(tz.format_utc(Utc::now()), uri))
+                    .map_err(|err| {
+                        McpError::invalid_params(
+                            format!("Invalid timezone '{timezone}': {err}"),
+                            None,
+                        )
+                    })
+            }
+        }
+    }
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for FastTimeServer {
     /// Gate the legacy handshake to the era(s) the mode serves. The SDK's
@@ -569,24 +780,96 @@ impl ServerHandler for FastTimeServer {
     /// tools/list is cacheable at 2026-07-28, so the modern wire format
     /// requires the cache directives (`cacheScope`/`ttlMs`). Legacy-era
     /// requests keep the fields absent: the option stays `None` and the SDK
-    /// strips `resultType` for legacy peers the same way.
+    /// strips `resultType` for legacy peers the same way. The prompts and
+    /// resources handlers below follow this exact rule.
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let mut result = ListToolsResult::with_all_items(self.tool_router.list_all());
-        if context.meta.protocol_version() == Some(ProtocolVersion::V_2026_07_28) {
+        if is_modern_request(&context) {
             result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
         }
         Ok(result)
     }
 
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new(APP_NAME, APP_VERSION))
-            .with_protocol_version(self.mode.supported_versions()[0].clone())
-            .with_instructions("Ultra-fast MCP test server.".to_string())
+    /// Hand-routed instead of `#[prompt_handler]`: that macro's generated
+    /// `list_prompts` hardcodes `CacheScope::Public`, which would drift from
+    /// `list_tools`; this keeps every list result on the same wire rules.
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        let mut result = ListPromptsResult::with_all_items(self.prompt_router.list_all());
+        if is_modern_request(&context) {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
+        }
+        Ok(result)
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, McpError> {
+        let prompt_context = PromptContext::new(self, request.name, request.arguments, context);
+        self.prompt_router.get_prompt(prompt_context).await
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let mut result = ListResourcesResult::with_all_items(resource_catalog());
+        if is_modern_request(&context) {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
+        }
+        Ok(result)
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        let mut result = ListResourceTemplatesResult::with_all_items(resource_templates());
+        if is_modern_request(&context) {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
+        }
+        Ok(result)
+    }
+
+    /// Reads carry the same 2026-07-28 cache directives with `ttlMs: 0` —
+    /// nothing this server returns is safe to cache (`time://now/*` and
+    /// `server://stats` are live values, so the static documents stay
+    /// uniform with them rather than special-cased).
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let contents = self.read_resource_contents(&request.uri)?;
+        let mut result = ReadResourceResult::new(vec![contents]);
+        if is_modern_request(&context) {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
+        }
+        Ok(result.into())
+    }
+
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .enable_resources()
+                .build(),
+        )
+        .with_server_info(Implementation::new(APP_NAME, APP_VERSION))
+        .with_protocol_version(self.mode.supported_versions()[0].clone())
+        .with_instructions("Ultra-fast MCP test server.".to_string())
     }
 
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
@@ -976,17 +1259,18 @@ mod tests {
         session_id
     }
 
-    async fn legacy_tool_call(
+    /// Any JSON-RPC request on an established legacy session (SSE response).
+    async fn legacy_jsonrpc(
         router: &Router,
         session_id: &str,
-        name: &str,
-        arguments: serde_json::Value,
+        method: &str,
+        params: serde_json::Value,
         id: i64,
     ) -> serde_json::Value {
         let mut request = mcp_post(json!({
             "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": { "name": name, "arguments": arguments },
+            "method": method,
+            "params": params,
             "id": id
         }));
         request
@@ -995,6 +1279,23 @@ mod tests {
         let response = oneshot(router, request).await;
         assert_eq!(response.status(), StatusCode::OK);
         parse_sse_json(&response_text(response).await)
+    }
+
+    async fn legacy_tool_call(
+        router: &Router,
+        session_id: &str,
+        name: &str,
+        arguments: serde_json::Value,
+        id: i64,
+    ) -> serde_json::Value {
+        legacy_jsonrpc(
+            router,
+            session_id,
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+            id,
+        )
+        .await
     }
 
     fn modern_request(method: &str, version: &str, id: i64) -> serde_json::Value {
@@ -1013,7 +1314,9 @@ mod tests {
 
     /// The MCP-Protocol-Version header must mirror the version in `_meta`,
     /// and 2026-07-28 requests must carry SEP-2243 headers: `Mcp-Method`
-    /// matching the body method, plus `Mcp-Name` for named methods.
+    /// matching the body method, plus `Mcp-Name` carrying `params.name`
+    /// (tools/call, prompts/get) or `params.uri` (resources/read) for
+    /// named methods.
     async fn modern_call(
         router: &Router,
         body: serde_json::Value,
@@ -1023,7 +1326,10 @@ mod tests {
             .expect("modern request should carry a version")
             .to_string();
         let method = body["method"].as_str().expect("request method").to_string();
-        let name = body["params"]["name"].as_str().map(str::to_string);
+        let name = body["params"]["name"]
+            .as_str()
+            .or(body["params"]["uri"].as_str())
+            .map(str::to_string);
         let mut request = mcp_post(body);
         let headers = request.headers_mut();
         headers.insert(
@@ -1071,6 +1377,8 @@ mod tests {
         assert_eq!(result["protocolVersion"], MCP_PROTOCOL_VERSION);
         assert_eq!(result["serverInfo"]["name"], APP_NAME);
         assert!(result["capabilities"]["tools"].is_object());
+        assert!(result["capabilities"]["prompts"].is_object());
+        assert!(result["capabilities"]["resources"].is_object());
     }
 
     #[tokio::test]
@@ -1288,6 +1596,298 @@ mod tests {
         assert!(text.contains(r#""requests_handled": "#));
     }
 
+    #[tokio::test]
+    async fn test_legacy_prompts_and_resources() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        // prompts/list: three tool-driven prompts, legacy era has no cache
+        // directives.
+        let body = legacy_jsonrpc(&router, &session_id, "prompts/list", json!({}), 50).await;
+        let result = &body["result"];
+        let prompts = result["prompts"].as_array().unwrap();
+        assert_eq!(prompts.len(), 3);
+        assert!(result.get("cacheScope").is_none());
+        assert!(result.get("ttlMs").is_none());
+
+        let current_time = prompts
+            .iter()
+            .find(|prompt| prompt["name"] == "current_time")
+            .unwrap();
+        let arguments = current_time["arguments"].as_array().unwrap();
+        assert_eq!(arguments.len(), 1);
+        assert_eq!(arguments[0]["name"], "timezone");
+        assert_eq!(arguments[0]["required"], false);
+
+        // prompts/get renders a user message that names the tool and args.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({ "name": "current_time", "arguments": { "timezone": "Asia/Tokyo" } }),
+            51,
+        )
+        .await;
+        let result = &body["result"];
+        assert_eq!(result["messages"].as_array().map(Vec::len), Some(1));
+        assert_eq!(result["messages"][0]["role"], "user");
+        let text = result["messages"][0]["content"]["text"].as_str().unwrap();
+        assert!(text.contains("get_system_time"));
+        assert!(text.contains("Asia/Tokyo"));
+
+        // prompts/get without optional arguments defaults to UTC.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({ "name": "current_time", "arguments": {} }),
+            52,
+        )
+        .await;
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        assert!(text.contains("UTC"));
+
+        // Unknown prompt names are invalid-params errors.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({ "name": "does_not_exist" }),
+            53,
+        )
+        .await;
+        assert_eq!(body["error"]["code"], -32602);
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("not found")
+        );
+
+        // resources/list: three static entries mirroring tools/endpoints.
+        let body = legacy_jsonrpc(&router, &session_id, "resources/list", json!({}), 54).await;
+        let result = &body["result"];
+        let uris: Vec<&str> = result["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|resource| resource["uri"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            uris,
+            ["config://timezones", "server://info", "server://stats"]
+        );
+        assert!(result.get("cacheScope").is_none());
+
+        // resources/templates/list: the dynamic time template.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/templates/list",
+            json!({}),
+            55,
+        )
+        .await;
+        let templates = body["result"]["resourceTemplates"].as_array().unwrap();
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0]["uriTemplate"], "time://now/{+timezone}");
+
+        // resources/read: static document.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/read",
+            json!({ "uri": "config://timezones" }),
+            56,
+        )
+        .await;
+        let contents = &body["result"]["contents"][0];
+        assert_eq!(contents["uri"], "config://timezones");
+        assert_eq!(contents["mimeType"], "text/plain");
+        assert!(
+            contents["text"]
+                .as_str()
+                .unwrap()
+                .contains("IANA timezone names")
+        );
+
+        // resources/read: server://info mirrors the /version endpoint.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/read",
+            json!({ "uri": "server://info" }),
+            57,
+        )
+        .await;
+        let contents = &body["result"]["contents"][0];
+        assert_eq!(contents["mimeType"], "application/json");
+        let info: serde_json::Value =
+            serde_json::from_str(contents["text"].as_str().unwrap()).unwrap();
+        assert_eq!(info["name"], APP_NAME);
+        assert_eq!(
+            info["mcp_versions"],
+            json!([MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION_MODERN])
+        );
+
+        // resources/read: the template URI resolves like get_system_time.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/read",
+            json!({ "uri": "time://now/Asia/Tokyo" }),
+            58,
+        )
+        .await;
+        let text = body["result"]["contents"][0]["text"].as_str().unwrap();
+        assert!(
+            text.ends_with("+09:00"),
+            "Tokyo time should be +09:00: {text}"
+        );
+
+        // Unknown URIs keep the legacy RESOURCE_NOT_FOUND code.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/read",
+            json!({ "uri": "config://does-not-exist" }),
+            59,
+        )
+        .await;
+        assert_eq!(body["error"]["code"], -32002);
+
+        // Bad timezones in template reads mirror the tool's error wording.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/read",
+            json!({ "uri": "time://now/Mars/Olympus" }),
+            60,
+        )
+        .await;
+        assert_eq!(body["error"]["code"], -32602);
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("Mars/Olympus")
+        );
+    }
+
+    /// RFC 6570 clients expanding the advertised template must get URIs the
+    /// reader accepts: reserved expansion leaves the `/` of IANA names and
+    /// the `+`/`:` of fixed offsets unencoded, exactly what `parse_timezone`
+    /// expects.
+    #[tokio::test]
+    async fn test_resource_template_expansion_matches_reader() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        // The advertised template must use reserved expansion; simple
+        // expansion ({timezone}) would percent-encode the values below into
+        // URIs the reader rejects.
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "resources/templates/list",
+            json!({}),
+            64,
+        )
+        .await;
+        let templates = body["result"]["resourceTemplates"].as_array().unwrap();
+        assert_eq!(templates[0]["uriTemplate"], "time://now/{+timezone}");
+
+        for (timezone, expected_offset) in [("Asia/Tokyo", "+09:00"), ("+05:30", "+05:30")] {
+            let body = legacy_jsonrpc(
+                &router,
+                &session_id,
+                "resources/read",
+                json!({ "uri": format!("time://now/{timezone}") }),
+                65,
+            )
+            .await;
+            let text = body["result"]["contents"][0]["text"].as_str().unwrap();
+            assert!(
+                text.ends_with(expected_offset),
+                "expanded {timezone} should read as {expected_offset}: {text}"
+            );
+        }
+    }
+
+    /// Hostile prompt arguments (quotes, backslashes, newlines) must survive
+    /// as JSON string values instead of corrupting the embedded tool
+    /// arguments or making them unparseable.
+    #[tokio::test]
+    async fn test_current_time_prompt_arguments_round_trip() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        let hostile = "UTC\", \"timezone\": \"Asia/Tokyo\\\n\\";
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({ "name": "current_time", "arguments": { "timezone": hostile } }),
+            66,
+        )
+        .await;
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        let embedded = text
+            .strip_prefix("Call the get_system_time tool with ")
+            .and_then(|rest| {
+                rest.strip_suffix(" and report the timestamp it returns, including its UTC offset.")
+            })
+            .expect("prompt text should embed the serialized arguments");
+        let parsed: serde_json::Value =
+            serde_json::from_str(embedded).expect("embedded arguments should be valid JSON");
+        assert_eq!(parsed, json!({ "timezone": hostile }));
+    }
+
+    #[tokio::test]
+    async fn test_convert_time_prompt_arguments_round_trip() {
+        let router = build_router(ProtocolMode::Dual);
+        let session_id = initialize_session(&router).await;
+
+        let hostile_time = "2026-10-04\"\\\n12:00:00";
+        let hostile_zone = "UTC\", \"target_timezone\": \"Asia/Tokyo";
+        let body = legacy_jsonrpc(
+            &router,
+            &session_id,
+            "prompts/get",
+            json!({
+                "name": "convert_time",
+                "arguments": {
+                    "time": hostile_time,
+                    "source_timezone": hostile_zone,
+                    "target_timezone": "-08:00"
+                }
+            }),
+            67,
+        )
+        .await;
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        let embedded = text
+            .strip_prefix("Call the convert_time tool with ")
+            .and_then(|rest| rest.strip_suffix(" and state the converted time."))
+            .expect("prompt text should embed the serialized arguments");
+        let parsed: serde_json::Value =
+            serde_json::from_str(embedded).expect("embedded arguments should be valid JSON");
+        assert_eq!(
+            parsed,
+            json!({
+                "time": hostile_time,
+                "source_timezone": hostile_zone,
+                "target_timezone": "-08:00"
+            })
+        );
+    }
+
     // ========================================================================
     // Modern era (2026-07-28): stateless, version in params._meta + header
     // ========================================================================
@@ -1435,6 +2035,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_modern_prompts_and_resources_lists_include_cache_directives() {
+        for method in ["prompts/list", "resources/list", "resources/templates/list"] {
+            let (status, body) = modern_call(
+                &build_router(ProtocolMode::Dual),
+                modern_request(method, MCP_PROTOCOL_VERSION_MODERN, 60),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{method} should succeed");
+            let result = &body["result"];
+            assert_eq!(result["resultType"], "complete", "{method}");
+            assert_eq!(result["cacheScope"], "private", "{method}");
+            assert_eq!(result["ttlMs"], 0, "{method}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_modern_prompts_get_and_resources_read() {
+        // prompts/get works statelessly; Mcp-Name mirrors params.name.
+        let mut request = modern_request("prompts/get", MCP_PROTOCOL_VERSION_MODERN, 61);
+        request["params"]["name"] = json!("convert_time");
+        request["params"]["arguments"] = json!({
+            "time": "2026-10-04T12:00:00Z",
+            "source_timezone": "UTC",
+            "target_timezone": "America/New_York"
+        });
+        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        assert_eq!(status, StatusCode::OK);
+        let text = body["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        assert!(text.contains("convert_time"));
+        assert!(text.contains("America/New_York"));
+
+        // resources/read returns JSON content with the modern cache
+        // directives (ttlMs 0: never cached).
+        let mut request = modern_request("resources/read", MCP_PROTOCOL_VERSION_MODERN, 62);
+        request["params"]["uri"] = json!("server://info");
+        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        assert_eq!(status, StatusCode::OK);
+        let result = &body["result"];
+        assert_eq!(result["resultType"], "complete");
+        assert_eq!(result["cacheScope"], "private");
+        assert_eq!(result["ttlMs"], 0);
+        let contents = &result["contents"][0];
+        assert_eq!(contents["uri"], "server://info");
+        let info: serde_json::Value =
+            serde_json::from_str(contents["text"].as_str().unwrap()).unwrap();
+        assert_eq!(info["protocol_mode"], "dual");
+
+        // At 2026-07-28 the SDK rewrites RESOURCE_NOT_FOUND to invalid params.
+        let mut request = modern_request("resources/read", MCP_PROTOCOL_VERSION_MODERN, 63);
+        request["params"]["uri"] = json!("config://does-not-exist");
+        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], -32602);
+    }
+
+    #[tokio::test]
     async fn test_server_discover_lists_both_eras() {
         let (status, body) = modern_call(
             &build_router(ProtocolMode::Dual),
@@ -1449,6 +2107,8 @@ mod tests {
             json!([MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION_MODERN])
         );
         assert!(result["capabilities"]["tools"].is_object());
+        assert!(result["capabilities"]["prompts"].is_object());
+        assert!(result["capabilities"]["resources"].is_object());
         assert_eq!(result["cacheScope"], "private");
         assert_eq!(result["ttlMs"], 0);
         assert_eq!(
