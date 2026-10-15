@@ -325,6 +325,29 @@ make docker-run
 | `BIND_ADDRESS` | `0.0.0.0:9080` | Address to bind to |
 | `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
 | `MCP_PROTOCOL_MODE` | `dual` | MCP era(s) to serve: `legacy` (2025-11-25 only), `modern` (2026-07-28 only), or `dual` (both). Any other value fails startup with an error listing the accepted values |
+| `MCP_INSTRUCTIONS` | (see below) | Instructions text returned to clients in both `initialize` and `server/discover`. Unset or absent → default text. Non-empty value → that value. Empty string (`""`) → field omitted from both responses. |
+
+### `MCP_INSTRUCTIONS`
+
+The `MCP_INSTRUCTIONS` variable controls the `instructions` field returned in
+both the legacy `initialize` result (`2025-11-25`) and the modern `server/discover`
+result (`2026-07-28`).
+
+| `MCP_INSTRUCTIONS` | `instructions` field |
+|--------------------|---------------------|
+| Unset (default) | `"Fast Time Server. Use get_system_time for the current time. Use convert_time to convert a time between timezones."` |
+| Non-empty value | That value |
+| Empty string `""` | Field omitted from both responses |
+
+Example:
+
+```bash
+# Use a custom instructions string
+docker run -e MCP_INSTRUCTIONS="My custom instructions" ...
+
+# Suppress instructions entirely
+docker run -e MCP_INSTRUCTIONS="" ...
+```
 
 The `MCP_PROTOCOL_MODE` variable selects which MCP revision(s) the server
 speaks, without rebuilding or editing the entrypoint:

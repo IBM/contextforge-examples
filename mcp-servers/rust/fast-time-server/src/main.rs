@@ -68,6 +68,9 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:9080";
 const APP_NAME: &str = "fast-time-server";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_DELAY_MS: u64 = 60_000;
+/// The instructions text returned in both `initialize` and `server/discover`
+/// when `MCP_INSTRUCTIONS` is unset or absent.
+const DEFAULT_INSTRUCTIONS: &str = "Fast Time Server. Use get_system_time for the current time. Use convert_time to convert a time between timezones.";
 /// The legacy revision negotiates via the `initialize` handshake and uses
 /// `mcp-session-id` sessions; the modern revision declares the version
 /// per-request in `_meta` and is served statelessly. Both are served at once.
@@ -294,6 +297,9 @@ struct FastTimeServer {
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
     mode: ProtocolMode,
+    /// Instructions returned in `initialize` and `server/discover`.
+    /// `None` means the field is omitted from both responses.
+    instructions: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -397,12 +403,13 @@ fn is_modern_request(context: &RequestContext<RoleServer>) -> bool {
 
 #[tool_router]
 impl FastTimeServer {
-    fn new(mode: ProtocolMode) -> Self {
+    fn new(mode: ProtocolMode, instructions: Option<String>) -> Self {
         Self {
             state: Arc::new(SharedState::default()),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
             mode,
+            instructions,
         }
     }
 
@@ -860,7 +867,7 @@ impl ServerHandler for FastTimeServer {
     }
 
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(
+        let mut config = ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_prompts()
@@ -868,8 +875,11 @@ impl ServerHandler for FastTimeServer {
                 .build(),
         )
         .with_server_info(Implementation::new(APP_NAME, APP_VERSION))
-        .with_protocol_version(self.mode.supported_versions()[0].clone())
-        .with_instructions("Ultra-fast MCP test server.".to_string())
+        .with_protocol_version(self.mode.supported_versions()[0].clone());
+        if let Some(instructions) = &self.instructions {
+            config = config.with_instructions(instructions.clone());
+        }
+        config
     }
 
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
@@ -881,8 +891,26 @@ impl ServerHandler for FastTimeServer {
 // Main Entry Point
 // ============================================================================
 
-fn build_router(mode: ProtocolMode) -> Router {
-    let server = Arc::new(FastTimeServer::new(mode));
+// ============================================================================
+// Instructions
+// ============================================================================
+
+/// Resolve the server instructions from the `MCP_INSTRUCTIONS` environment
+/// variable.
+///
+/// - Unset or absent → `Some(DEFAULT_INSTRUCTIONS)`
+/// - Set to a non-empty value → `Some(value)`
+/// - Set to an empty string → `None` (field omitted from both eras)
+fn instructions_from_env() -> Option<String> {
+    match env::var("MCP_INSTRUCTIONS") {
+        Err(_) => Some(DEFAULT_INSTRUCTIONS.to_string()),
+        Ok(v) if v.is_empty() => None,
+        Ok(v) => Some(v),
+    }
+}
+
+fn build_router(mode: ProtocolMode, instructions: Option<String>) -> Router {
+    let server = Arc::new(FastTimeServer::new(mode, instructions));
     let ct = tokio_util::sync::CancellationToken::new();
     let mcp_service = StreamableHttpService::new(
         move || Ok(server.clone()),
@@ -938,7 +966,12 @@ async fn main() -> anyhow::Result<()> {
             .join(", ")
     );
 
-    let router = build_router(mode);
+    let instructions = instructions_from_env();
+    info!(
+        "Server instructions: {}",
+        instructions.as_deref().unwrap_or("(none)")
+    );
+    let router = build_router(mode, instructions);
 
     // Bind and serve
     let tcp_listener = tokio::net::TcpListener::bind(&bind_address)
@@ -1145,7 +1178,7 @@ mod tests {
 
     #[test]
     fn test_supported_protocol_versions_advertises_exactly_two_eras() {
-        let server = FastTimeServer::new(ProtocolMode::Dual);
+        let server = FastTimeServer::new(ProtocolMode::Dual, None);
         assert_eq!(
             server.supported_protocol_versions().as_ref(),
             [ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28]
@@ -1366,7 +1399,7 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_issues_session_and_echoes_legacy_version() {
         let response = oneshot(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             mcp_post(initialize_request(MCP_PROTOCOL_VERSION)),
         )
         .await;
@@ -1384,7 +1417,7 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_falls_back_to_legacy_for_unknown_version() {
         let response = oneshot(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             mcp_post(initialize_request("1999-01-01")),
         )
         .await;
@@ -1395,7 +1428,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_session_lifecycle() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         let mut list = mcp_post(json!({
@@ -1453,7 +1486,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_verify_protocol_reports_session() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let body = legacy_tool_call(&router, &session_id, "verify-protocol", json!({}), 10).await;
         let result = &body["result"];
@@ -1474,7 +1507,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_flaky_fails_then_succeeds() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let key = "test-flaky-sdk";
         for attempt in 1..=2i64 {
@@ -1510,7 +1543,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_convert_time_matches_go_fast_time_dst_behavior() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let body = legacy_tool_call(
             &router,
@@ -1532,7 +1565,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_convert_time_matches_go_fast_time_half_hour_zones() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let body = legacy_tool_call(
             &router,
@@ -1551,7 +1584,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_time_stats_and_schema_tools() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         let body = legacy_tool_call(&router, &session_id, "get_system_time", json!({}), 20).await;
@@ -1598,7 +1631,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_prompts_and_resources() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         // prompts/list: three tool-driven prompts, legacy era has no cache
@@ -1782,7 +1815,7 @@ mod tests {
     /// expects.
     #[tokio::test]
     async fn test_resource_template_expansion_matches_reader() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         // The advertised template must use reserved expansion; simple
@@ -1821,7 +1854,7 @@ mod tests {
     /// arguments or making them unparseable.
     #[tokio::test]
     async fn test_current_time_prompt_arguments_round_trip() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         let hostile = "UTC\", \"timezone\": \"Asia/Tokyo\\\n\\";
@@ -1849,7 +1882,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_convert_time_prompt_arguments_round_trip() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
 
         let hostile_time = "2026-10-04\"\\\n12:00:00";
@@ -1895,7 +1928,7 @@ mod tests {
     #[tokio::test]
     async fn test_modern_verify_protocol_reports_stateless() {
         let (status, body) = modern_tool_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             "verify-protocol",
             json!({}),
             1,
@@ -1938,7 +1971,11 @@ mod tests {
         );
         headers.insert("X-Vault-Tokens", HeaderValue::from_static("secret-token"));
 
-        let response = oneshot(&build_router(ProtocolMode::Dual), http).await;
+        let response = oneshot(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            http,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::OK);
         let body: serde_json::Value =
             serde_json::from_str(&response_text(response).await).expect("response should be JSON");
@@ -1956,7 +1993,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_whoami_reports_null_authorization_when_absent() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let body = legacy_tool_call(&router, &session_id, "whoami", json!({}), 41).await;
         let result = &body["result"];
@@ -1970,7 +2007,7 @@ mod tests {
     #[tokio::test]
     async fn test_modern_tools_call_needs_no_session() {
         let (status, body) = modern_tool_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             "echo",
             json!({ "message": "hi" }),
             2,
@@ -1984,7 +2021,7 @@ mod tests {
     #[tokio::test]
     async fn test_modern_tools_list_schemas() {
         let (status, body) = modern_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             modern_request("tools/list", MCP_PROTOCOL_VERSION_MODERN, 3),
         )
         .await;
@@ -2038,7 +2075,7 @@ mod tests {
     async fn test_modern_prompts_and_resources_lists_include_cache_directives() {
         for method in ["prompts/list", "resources/list", "resources/templates/list"] {
             let (status, body) = modern_call(
-                &build_router(ProtocolMode::Dual),
+                &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
                 modern_request(method, MCP_PROTOCOL_VERSION_MODERN, 60),
             )
             .await;
@@ -2060,7 +2097,11 @@ mod tests {
             "source_timezone": "UTC",
             "target_timezone": "America/New_York"
         });
-        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        let (status, body) = modern_call(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            request,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let text = body["result"]["messages"][0]["content"]["text"]
             .as_str()
@@ -2072,7 +2113,11 @@ mod tests {
         // directives (ttlMs 0: never cached).
         let mut request = modern_request("resources/read", MCP_PROTOCOL_VERSION_MODERN, 62);
         request["params"]["uri"] = json!("server://info");
-        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        let (status, body) = modern_call(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            request,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let result = &body["result"];
         assert_eq!(result["resultType"], "complete");
@@ -2087,7 +2132,11 @@ mod tests {
         // At 2026-07-28 the SDK rewrites RESOURCE_NOT_FOUND to invalid params.
         let mut request = modern_request("resources/read", MCP_PROTOCOL_VERSION_MODERN, 63);
         request["params"]["uri"] = json!("config://does-not-exist");
-        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        let (status, body) = modern_call(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            request,
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"]["code"], -32602);
     }
@@ -2095,7 +2144,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_discover_lists_both_eras() {
         let (status, body) = modern_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             modern_request("server/discover", MCP_PROTOCOL_VERSION_MODERN, 4),
         )
         .await;
@@ -2120,7 +2169,7 @@ mod tests {
     #[tokio::test]
     async fn test_modern_unsupported_version_rejected() {
         let (status, body) = modern_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             modern_request("tools/list", "2025-06-18", 5),
         )
         .await;
@@ -2141,7 +2190,11 @@ mod tests {
             PROTOCOL_VERSION_HEADER,
             HeaderValue::from_static("2025-06-18"),
         );
-        let response = oneshot(&build_router(ProtocolMode::Dual), request).await;
+        let response = oneshot(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            request,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
         assert_eq!(body["error"]["code"], -32020);
@@ -2154,7 +2207,11 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove(CLIENT_CAPABILITIES_META_KEY);
-        let (status, body) = modern_call(&build_router(ProtocolMode::Dual), request).await;
+        let (status, body) = modern_call(
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
+            request,
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"]["code"], -32602);
     }
@@ -2162,7 +2219,7 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_echo_rejects_delay_above_limit() {
         let (status, body) = modern_tool_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             "echo",
             json!({ "message": "hello", "delay": MAX_DELAY_MS + 1 }),
             8,
@@ -2179,7 +2236,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rest_and_meta_endpoints() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let response = oneshot(
             &router,
             Request::builder()
@@ -2281,7 +2338,7 @@ mod tests {
     #[tokio::test]
     async fn test_modern_tools_list_includes_cache_directives() {
         let (status, body) = modern_call(
-            &build_router(ProtocolMode::Dual),
+            &build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string())),
             modern_request("tools/list", MCP_PROTOCOL_VERSION_MODERN, 30),
         )
         .await;
@@ -2294,7 +2351,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_tools_list_omits_cache_directives() {
-        let router = build_router(ProtocolMode::Dual);
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
         let session_id = initialize_session(&router).await;
         let mut list = mcp_post(json!({
             "jsonrpc": "2.0",
@@ -2320,7 +2377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_mode_serves_only_the_legacy_era() {
-        let router = build_router(ProtocolMode::Legacy);
+        let router = build_router(ProtocolMode::Legacy, Some(DEFAULT_INSTRUCTIONS.to_string()));
 
         let session_id = initialize_session(&router).await;
         let body = legacy_tool_call(&router, &session_id, "verify-protocol", json!({}), 40).await;
@@ -2341,7 +2398,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modern_mode_serves_only_the_modern_era() {
-        let router = build_router(ProtocolMode::Modern);
+        let router = build_router(ProtocolMode::Modern, Some(DEFAULT_INSTRUCTIONS.to_string()));
 
         let (status, body) =
             modern_tool_call(&router, "echo", json!({ "message": "hi" }), 42).await;
@@ -2374,7 +2431,7 @@ mod tests {
             ),
         ] {
             let response = oneshot(
-                &build_router(mode),
+                &build_router(mode, Some(DEFAULT_INSTRUCTIONS.to_string())),
                 Request::builder()
                     .method("GET")
                     .uri("http://localhost/version")
@@ -2388,5 +2445,74 @@ mod tests {
             assert_eq!(body["mcp_versions"], expected);
             assert_eq!(body["protocol_mode"], mode.as_str());
         }
+    }
+    // ========================================================================
+    // MCP_INSTRUCTIONS acceptance tests
+    // ========================================================================
+
+    /// Helper: run an initialize handshake and return the parsed SSE body.
+    async fn do_initialize(router: &Router) -> serde_json::Value {
+        let response = oneshot(router, mcp_post(initialize_request(MCP_PROTOCOL_VERSION))).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        parse_sse_json(&response_text(response).await)
+    }
+
+    /// Helper: run server/discover and return the parsed JSON body.
+    async fn do_discover(router: &Router) -> serde_json::Value {
+        let (status, body) = modern_call(
+            router,
+            modern_request("server/discover", MCP_PROTOCOL_VERSION_MODERN, 99),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        body
+    }
+
+    #[tokio::test]
+    async fn test_instructions_default_present_in_initialize() {
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
+        let body = do_initialize(&router).await;
+        assert_eq!(body["result"]["instructions"], DEFAULT_INSTRUCTIONS);
+    }
+
+    #[tokio::test]
+    async fn test_instructions_default_present_in_server_discover() {
+        let router = build_router(ProtocolMode::Dual, Some(DEFAULT_INSTRUCTIONS.to_string()));
+        let body = do_discover(&router).await;
+        assert_eq!(body["result"]["instructions"], DEFAULT_INSTRUCTIONS);
+    }
+
+    #[tokio::test]
+    async fn test_instructions_empty_omitted_in_initialize() {
+        let router = build_router(ProtocolMode::Dual, None);
+        let body = do_initialize(&router).await;
+        assert!(
+            body["result"]["instructions"].is_null(),
+            "instructions should be absent when None"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instructions_empty_omitted_in_server_discover() {
+        let router = build_router(ProtocolMode::Dual, None);
+        let body = do_discover(&router).await;
+        assert!(
+            body["result"]["instructions"].is_null(),
+            "instructions should be absent when None"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instructions_custom_value_in_initialize() {
+        let router = build_router(ProtocolMode::Dual, Some("custom".to_string()));
+        let body = do_initialize(&router).await;
+        assert_eq!(body["result"]["instructions"], "custom");
+    }
+
+    #[tokio::test]
+    async fn test_instructions_custom_value_in_server_discover() {
+        let router = build_router(ProtocolMode::Dual, Some("custom".to_string()));
+        let body = do_discover(&router).await;
+        assert_eq!(body["result"]["instructions"], "custom");
     }
 }
