@@ -9,7 +9,7 @@ license = { text = "Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastmcp>=3.4.4",
+    "mcp>=2,<3",
     "feedparser>=6.0.12",
     "httpx>=0.28.1",
     "orjson>=3.11.9",
@@ -54,7 +54,7 @@ build-backend = "hatchling.build"
 packages = ["src/mcp_rss_search"]
 
 [project.scripts]
-mcp-rss-search = "mcp_rss_search.server_fastmcp:main"
+mcp-rss-search = "mcp_rss_search.server_mcp:main"
 
 [tool.black]
 line-length = 100
@@ -81,8 +81,8 @@ target-version = "py312"
 select = ["E", "W", "F", "B", "I", "N", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-# B008: FastMCP tool parameters intentionally use Field() call defaults.
-"src/mcp_rss_search/server_fastmcp.py" = ["B008"]
+# B008: MCP tool parameters intentionally use Field() call defaults.
+"src/mcp_rss_search/server_mcp.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
